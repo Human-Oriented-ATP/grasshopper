@@ -675,6 +675,8 @@ class MineField(TermSequence, default = TermBool.false):
             return TermInt.sum(*summands, const = const)
         elif self.f == Jumps.landings.fget:
             return self.args[0].number
+        elif self.f == Jump.to_empty_minefield.fget:
+            return TermInt(0)
         else:
             return None
 

@@ -3,6 +3,7 @@ import itertools
 from itertools import combinations
 
 from smt_lia import LiaChecker
+from uflia_hammer import record_grasshopper_task
 from logic import *
 import prover
 
@@ -24,6 +25,8 @@ def model_display_mines(mines, model):
 
     print('|'.join(res))
 
+last_problem_index = -1
+
 class LogicContext:
     def __init__(self, env, facts, res_jumps, boom):
         self.env = env
@@ -39,6 +42,11 @@ class LogicContext:
 
     def prove_contradiction(self):
         # print('Proving subgoal...', end = '')
+        global last_problem_index
+        last_problem_index += 1
+        hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
+        record_grasshopper_task(self.facts, hammer_fname)
+
         res = prover.prove_contradiction(self.facts)
         # print('   DONE')
         if isinstance(res, prover.UnsatProof): return True
