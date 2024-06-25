@@ -184,6 +184,11 @@ class Constant:
 
         return term
 
+    def __str__(self):
+        return self.name
+    def __repr__(self):
+        return f"Constant({self.name})"
+
 def term_fun(build):
     out_type = build.__annotations__.get('return')
     name = build.__name__
@@ -680,6 +685,7 @@ class MineField(TermSequence, default = TermBool.false):
         else:
             return None
 
+    @staticmethod
     @term_fun
     def getitem(self, n) -> TermBool:
         assert isinstance(self, MineField)

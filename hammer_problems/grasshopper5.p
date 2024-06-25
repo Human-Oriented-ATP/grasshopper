@@ -34,18 +34,25 @@ tff(mines0_type, type, mines0 : t_mine_field).
 tff(mines1_type, type, mines1 : t_mine_field).
 tff(mines00_type, type, mines00 : t_mine_field).
 tff(mines01_type, type, mines01 : t_mine_field).
+tff(mines000_type, type, mines000 : t_mine_field).
+tff(mines001_type, type, mines001 : t_mine_field).
+tff(mines_un_type, type, mines_un : t_mine_field).
+tff(jumps_ih_type, type, jumps_ih : t_jumps).
+tff(jumps_ih0_type, type, jumps_ih0 : t_jump).
+tff(jumps_ihr_type, type, jumps_ihr : t_jumps).
+tff(boom_type, type, boom : $int).
 
 % Constraints
 tff('constraint_0', axiom, ![Ja:t_jumps] : jumps_concat(empty_jumps, Ja) = Ja).
 tff('constraint_1', axiom, ![Ja:t_jumps] : jumps_concat(Ja, empty_jumps) = Ja).
-tff('constraint_2', axiom, ![Jb:t_jumps, Jc:t_jumps, Ja:t_jumps] : jumps_concat(jumps_concat(Ja, Jb), Jc) = jumps_concat(Ja, jumps_concat(Jb, Jc))).
+tff('constraint_2', axiom, ![Ja:t_jumps, Jb:t_jumps, Jc:t_jumps] : jumps_concat(jumps_concat(Ja, Jb), Jc) = jumps_concat(Ja, jumps_concat(Jb, Jc))).
 tff('constraint_3', axiom, ![Jsa:t_jump_set] : jumpset_merge(empty_jumpset, Jsa) = Jsa).
 tff('constraint_4', axiom, ![Jsa:t_jump_set] : jumpset_merge(Jsa, empty_jumpset) = Jsa).
 tff('constraint_5', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : jumpset_merge(Jsa, Jsb) = jumpset_merge(Jsb, Jsa)).
-tff('constraint_6', axiom, ![Jsa:t_jump_set, Jsc:t_jump_set, Jsb:t_jump_set] : jumpset_merge(jumpset_merge(Jsa, Jsb), Jsc) = jumpset_merge(Jsa, jumpset_merge(Jsb, Jsc))).
+tff('constraint_6', axiom, ![Jsc:t_jump_set, Jsb:t_jump_set, Jsa:t_jump_set] : jumpset_merge(jumpset_merge(Jsa, Jsb), Jsc) = jumpset_merge(Jsa, jumpset_merge(Jsb, Jsc))).
 tff('constraint_7', axiom, ![Ma:t_mine_field] : minefield_concat(empty_minefield, Ma) = Ma).
 tff('constraint_8', axiom, ![Ma:t_mine_field] : minefield_concat(Ma, empty_minefield) = Ma).
-tff('constraint_9', axiom, ![Mc:t_mine_field, Mb:t_mine_field, Ma:t_mine_field] : minefield_concat(minefield_concat(Ma, Mb), Mc) = minefield_concat(Ma, minefield_concat(Mb, Mc))).
+tff('constraint_9', axiom, ![Mb:t_mine_field, Mc:t_mine_field, Ma:t_mine_field] : minefield_concat(minefield_concat(Ma, Mb), Mc) = minefield_concat(Ma, minefield_concat(Mb, Mc))).
 tff('constraint_10', axiom, s(empty_jumps) = empty_jumpset).
 tff('constraint_11', axiom, ![Jx:t_jump] : s(jumps_singleton(Jx)) = jumpset_singleton(Jx)).
 tff('constraint_12', axiom, ![Jb:t_jumps, Ja:t_jumps] : s(jumps_concat(Ja, Jb)) = jumpset_merge(s(Ja), s(Jb))).
@@ -70,8 +77,8 @@ tff('constraint_30', axiom, nodup(empty_jumpset)).
 tff('constraint_31', axiom, ![Jx:t_jump] : nodup(jumpset_singleton(Jx))).
 tff('constraint_32', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsa))).
 tff('constraint_33', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsb))).
-tff('constraint_34', axiom, ![Jx:t_jump, Jsa:t_jump_set, Jsb:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
-tff('constraint_35', axiom, ![Jy:t_jump, Jx:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
+tff('constraint_34', axiom, ![Jsb:t_jump_set, Jx:t_jump, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
+tff('constraint_35', axiom, ![Jx:t_jump, Jy:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
 tff('constraint_36', axiom, ![Jx:t_jump] : ~(contains(empty_jumpset, Jx))).
 tff('constraint_37', axiom, ![X:$int] : ~(getitem(empty_minefield, X))).
 tff('constraint_38', axiom, ![X:$int] : (getitem(minefield_singleton($true), X) <=> X = 0)).
@@ -103,6 +110,19 @@ tff('constraint_63', axiom, mines = minefield_concat(mines0, mines1)).
 tff('constraint_64', axiom, length_c2(mines0) = length_c1(jumps_max)).
 tff('constraint_65', axiom, mines0 = minefield_concat(mines00, mines01)).
 tff('constraint_66', axiom, length_c2(mines00) = $sum(length_c1(jumps_max), -1)).
-tff('constraint_67', axiom, ~(getitem(mines01, 0))).
-tff('constraint_68', axiom, ~(count(mines0) = 0)).
-tff('constraint_69', axiom, ($lesseq(number(jumps), number(jumpsr)) | ~(nodup(jumpsr)) | ~(length(jumpsr) = $sum(length_c2(mines1), 1)) | $lesseq(number(jumpsr), count(mines1)))).
+tff('constraint_67', axiom, getitem(mines01, 0)).
+tff('constraint_68', axiom, ~($lesseq(length_c2(mines00), length_c2(mines1)))).
+tff('constraint_69', axiom, mines00 = minefield_concat(mines000, mines001)).
+tff('constraint_70', axiom, length_c2(mines000) = length_c2(mines1)).
+tff('constraint_71', axiom, ![X:$int] : (~(getitem(mines000, X)) | getitem(mines_un, X))).
+tff('constraint_72', axiom, ![X:$int] : (~(getitem(mines1, X)) | getitem(mines_un, X))).
+tff('constraint_73', axiom, length_c2(mines_un) = length_c2(mines000)).
+tff('constraint_74', axiom, length_c2(mines_un) = length_c2(mines1)).
+tff('constraint_75', axiom, $lesseq(count(mines000), count(mines_un))).
+tff('constraint_76', axiom, $lesseq(count(mines1), count(mines_un))).
+tff('constraint_77', axiom, $lesseq(count(mines_un), $sum(count(mines000), count(mines1)))).
+tff('constraint_78', axiom, jumpsr = s(jumps_ih)).
+tff('constraint_79', axiom, ![X:$int] : (~(getitem(landings(jumps_ih), X)) | ~(getitem(mines_un, X)))).
+tff('constraint_80', axiom, jumps_ih = jumps_concat(jumps_singleton(jumps_ih0), jumps_ihr)).
+tff('constraint_81', axiom, ($sum($sum(boom, $product(-1, length_c1(jumps_ih0))), 1) = 0 | $sum($sum($sum(boom, $product(-1, length_c1(jumps_ih0))), $product(-1, length_c1(jumps_max))), 1) = 0 | getitem(landings(jumps_ihr), $sum($sum(boom, $product(-1, length_c1(jumps_ih0))), $product(-1, length_c1(jumps_max)))))).
+tff('constraint_82', axiom, getitem(mines, boom)).

@@ -28,89 +28,103 @@ def model_display_mines(mines, model):
 last_problem_index = -1
 
 class LogicContext:
-    def __init__(self, env, facts, res_jumps, boom):
+    def __init__(self, env, facts, assumed_ids, res_jumps, boom):
         self.env = env
         self.facts = list(facts)
+        self.assumed_ids = list(assumed_ids)
         self.res_jumps = res_jumps
         self.boom = boom
 
     def clone(self):
-        return LogicContext(self.env, self.facts, self.res_jumps, self.boom)
-    def add_fact(self, fact):
+        return LogicContext(self.env, self.facts, self.assumed_ids, self.res_jumps, self.boom)
+    def add_fact(self, fact, assumed = False):
+        if assumed: self.assumed_ids.append(len(self.facts))
         assert isinstance(fact, TermBool)
         self.facts.append(fact)
 
-    def prove_contradiction(self):
+    def prove_contradiction(self, record_uflia = False, show_model = True):
         # print('Proving subgoal...', end = '')
-        global last_problem_index
-        last_problem_index += 1
-        hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
-        record_grasshopper_task(self.facts, hammer_fname)
+        if record_uflia:
+            global last_problem_index
+            last_problem_index += 1
+            hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
+            record_grasshopper_task(self.facts, hammer_fname)
 
-        res = prover.prove_contradiction(self.facts)
+        res = prover.prove_contradiction(self.facts, show_model = show_model)
         # print('   DONE')
         if isinstance(res, prover.UnsatProof): return True
         elif isinstance(res, Substitution):
             _, subst = prover.extract_subst(self.facts)
-            model_display_mines(subst[self.env.mines], res)
-            if self.res_jumps is not None:
-                model_display_mines(subst[self.res_jumps].landings, res)
-            if self.boom is not None:
-                print('  '*int(res[self.boom]) + '#')
+            if show_model:
+                model_display_mines(subst[self.env.mines], res)
+                if self.res_jumps is not None:
+                    model_display_mines(subst[self.res_jumps].landings, res)
+                if self.boom is not None:
+                    print('  '*int(res[self.boom]) + '#')
         return False
 
-    def prove(self, goal):
+    def prove(self, goal, record_uflia = False, show_model = True):
         ctx = self.clone()
         ctx.add_fact(~goal)
-        return ctx.prove_contradiction()
+        return ctx.prove_contradiction(show_model = show_model)
+
+    def show_assumed(self):
+        print("Assumptions:")
+        for idx in self.assumed_ids:
+            print('*', self.facts[idx])
+    def show_last_assump(self, bullet = ' *'):
+        if not self.assumed_ids: return
+        n = len(self.assumed_ids)
+        idx = self.assumed_ids[n-1]
+        print('  '*(n-1) + bullet + ' '+ str(self.facts[idx]))        
 
 class GrasshopperEnv:
-    def __init__(self):
+    def __init__(self, record_uflia = False, auto_assume = False):
         self.size = TermInt.fixed_var('size')
         self.jumps = JumpSet.fixed_var('jumps')
         self.mines = MineField.fixed_var('mines')
-        univ_theorems = [
-            Jump.X.length > 0,
-            JumpSet.X.length >= 0,
-            JumpSet.X.number >= 0,
-            JumpSet.X.number <= JumpSet.X.length,
-            ~equals(JumpSet.X.number, 0) | equals(JumpSet.X.length, 0),
-            MineField.X.length >= 0,
-            MineField.X.count >= 0,
-            MineField.X.length >= MineField.X.count,
-        ]
-        X = TermInt.X
-        A = MineField.free_var('A')
-        univ_theorems.extend([
-            ~A[X] | (X >= 0),
-            ~A[X] | (X < A.length),
-            ~A[X] | (A.count > 0),
-            ~(A.count >= A.length) | ~(X >= 0) | ~(X < A.length) | A[X],
-        ])
+        univ_theorems = prover.get_univ_theorems()
         ctx_theorems = [
             self.jumps.nodup,
             equals(self.jumps.length, self.size+1),
             equals(self.mines.length, self.size),
             self.jumps.number > self.mines.count,
         ]
-        self.ctx = LogicContext(self, univ_theorems + ctx_theorems, None, None)
+        self.ctx = LogicContext(self, univ_theorems + ctx_theorems, [], None, None)
         self.ctx_stack = []
         self.proven = False
+        self.record_uflia = record_uflia
+        self.auto_assume = auto_assume
 
-    def split_case(self, prop):
+    def prove(self, goal):
+        show_model = (goal.f == conjunction) and not self.auto_assume
+        if not self.ctx.prove(goal, record_uflia = self.record_uflia, show_model = show_model):
+            if goal.f == conjunction:
+                for subgoal in goal.args:
+                    self.prove(subgoal)
+            elif self.auto_assume:
+                self.split_case(goal, automatic = True)
+            else:
+                raise Exception("Failed to prove: "+str(goal))
+    def prove_contradiction(self):
+        if not self.ctx.prove_contradiction(record_uflia = self.record_uflia):
+            raise Exception("Failed to prove contradiction")
+
+    def split_case(self, prop, automatic = False):
         assert isinstance(prop, TermBool)
         ctx2 = self.ctx.clone()
-        ctx2.add_fact(~prop)
+        ctx2.add_fact(~prop, assumed = True)
         self.ctx_stack.append(ctx2)
-        self.ctx.add_fact(prop)
+        self.ctx.add_fact(prop, assumed = True)
+
+        if automatic: bullet = 'A*'
+        else: bullet = 'M*'
+        self.ctx.show_last_assump(bullet)
 
     def provide_jumps(self, jumps):
         assert isinstance(jumps, Jumps)
-        if not self.ctx.prove(equals(jumps.s, self.jumps)):
-            raise Exception("Failed to prove that we keep the same set of jumps")
+        self.prove(equals(jumps.s, self.jumps))
         boom = TermInt.fixed_var('boom')
-        self.ctx.add_fact(boom > 0)
-        self.ctx.add_fact(boom < self.size)
         self.ctx.add_fact(jumps.landings[boom])
         self.ctx.add_fact(self.mines[boom])
         self.ctx.boom = boom
@@ -119,14 +133,14 @@ class GrasshopperEnv:
 
     def finish_case(self):
 
-        if self.ctx.prove_contradiction():
-            if self.ctx_stack:
-                self.ctx = self.ctx_stack.pop()
-            else:
-                self.ctx = None
-                self.proven = True
+        self.prove_contradiction()
+
+        if self.ctx_stack:
+            self.ctx = self.ctx_stack.pop()
+            self.ctx.show_last_assump()
         else:
-            raise Exception("Failed to prove contradiction")
+            self.ctx = None
+            self.proven = True
 
     ######  Domain specific operations
 
@@ -138,8 +152,7 @@ class GrasshopperEnv:
 
     def pop_max_jump(self, jumps):
         assert isinstance(jumps, JumpSet) and jumps.is_var, jumps
-        if not self.ctx.prove(jumps.number > 0):
-            raise Exception(f"pop_max_jump: Failed to prove that {jumps} is non-empty")
+        self.prove(jumps.number > 0)
         J = Jump.fixed_var(jumps.var_name+'_max')
         jumpsr = JumpSet.fixed_var(jumps.var_name+'r')
         self.ctx.add_fact(equals(jumps, JumpSet.merge(J, jumpsr)))
@@ -148,8 +161,7 @@ class GrasshopperEnv:
 
     def pop_first_jump(self, jumps):
         assert isinstance(jumps, Jumps) and jumps.is_var, jumps
-        if not self.ctx.prove(jumps.number > 0):
-            raise Exception(f"pop_first_jump: Failed to prove that {jumps} is non-empty")
+        self.prove(jumps.number > 0)
         J = Jump.fixed_var(jumps.var_name+'0')
         jumpsr = Jumps.fixed_var(jumps.var_name+'r')
         self.ctx.add_fact(equals(jumps, Jumps.concat(J, jumpsr)))
@@ -158,8 +170,7 @@ class GrasshopperEnv:
     def split_mines(self, mines, i):
         assert isinstance(mines, MineField) and mines.is_var
         assert isinstance(i, TermInt)
-        if not self.ctx.prove((i >= 0) & (i <= mines.length)):
-            raise Exception(f"split_mines: Failed to prove that {i} points inside {mines}")
+        self.prove((i >= 0) & (i <= mines.length))
         mines0 = MineField.fixed_var(mines.var_name+'0')
         mines1 = MineField.fixed_var(mines.var_name+'1')
         self.ctx.add_fact(equals(mines, mines0 + mines1))
@@ -175,10 +186,7 @@ class GrasshopperEnv:
             equals(jumps.length, mines.length+1),
             jumps.number > mines.count,
         ]
-        if not self.ctx.prove(conjunction(*requirements)):
-            for i,req in enumerate(requirements):
-                if not self.ctx.prove(req):
-                    raise Exception(f"Using induction: Failed to prove {i}: {req}")
+        self.prove(conjunction(*requirements))
 
         jumps_ih = Jumps.fixed_var('jumps_ih')
         self.ctx.add_fact(equals(jumps, jumps_ih.s))
@@ -190,8 +198,7 @@ class GrasshopperEnv:
 
     def split_first_mine(self, mines):
         assert isinstance(mines, MineField) and mines.is_var
-        if not self.ctx.prove(mines.count > 0):
-            raise Exception(f"split_first_mine: Failed to prove that {mines} contains a mine")
+        self.prove(mines.count > 0)
         
         mines0 = MineField.fixed_var(mines.var_name+'0')
         mines1 = MineField.fixed_var(mines.var_name+'1')
@@ -201,8 +208,7 @@ class GrasshopperEnv:
 
     def split_jump_landings(self, jumps, i):
         assert isinstance(jumps, Jumps) and jumps.is_var
-        if not self.ctx.prove((i >= 0) & (i < jumps.length)):
-            raise Exception(f"split_jump_langings: {i} doesn't point inside {jumps}")
+        self.prove((i >= 0) & (i < jumps.length))
         jumps0 = Jumps.fixed_var(jumps.var_name+'0')
         jumps1 = Jumps.fixed_var(jumps.var_name+'1')
         J = Jump.fixed_var(jumps.var_name+'_mid')
@@ -213,8 +219,7 @@ class GrasshopperEnv:
 
     def union_mines(self, mines1, mines2):
         assert isinstance(mines1, MineField) and isinstance(mines2, MineField)
-        if not self.ctx.prove(equals(mines1.length, mines2.length)):
-            raise Exception(f"union_mines: {mines1} are not of the same length as {mines2}")
+        self.prove(equals(mines1.length, mines2.length))
         mines = MineField.fixed_var('mines_un')
         self.ctx.add_fact(~mines1[TermInt.X] | mines[TermInt.X])
         self.ctx.add_fact(~mines2[TermInt.X] | mines[TermInt.X])

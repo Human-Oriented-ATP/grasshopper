@@ -1,4 +1,4 @@
-from logic import equals, Substitution, TermBool, TermInt
+from logic import equals, Substitution, TermBool, TermInt, Jump, Jumps, MineField, JumpSet
 from auto_inst import AutoInstance
 from smt_lia import LiaChecker
 
@@ -37,7 +37,7 @@ debug = False
 # (4) in a few iterations, adds extra instances of clauses with free variables
 #     that match the ground constraints
 
-def prove_contradiction(constraints, max_inst_iters = 1):
+def prove_contradiction(constraints, max_inst_iters = 1, show_model = True):
 
     if debug:
         print("\nConstraints:\n")
@@ -113,9 +113,30 @@ def prove_contradiction(constraints, max_inst_iters = 1):
     lia.solve()
 
     if lia.satisfiable:
-        lia.show_model()
+        if show_model: lia.show_model()
         return subst.substitute(lia.sat_model)
     elif lia.unsatisfiable:
         return UnsatProof()
     else:
         return None
+
+def get_univ_theorems():
+    univ_theorems = [
+        Jump.X.length > 0,
+        JumpSet.X.length >= 0,
+        JumpSet.X.number >= 0,
+        JumpSet.X.number <= JumpSet.X.length,
+        ~equals(JumpSet.X.number, 0) | equals(JumpSet.X.length, 0),
+        MineField.X.length >= 0,
+        MineField.X.count >= 0,
+        MineField.X.length >= MineField.X.count,
+    ]
+    X = TermInt.X
+    A = MineField.free_var('A')
+    univ_theorems.extend([
+        ~A[X] | (X >= 0),
+        ~A[X] | (X < A.length),
+        ~A[X] | (A.count > 0),
+        ~(A.count >= A.length) | ~(X >= 0) | ~(X < A.length) | A[X],
+    ])
+    return univ_theorems

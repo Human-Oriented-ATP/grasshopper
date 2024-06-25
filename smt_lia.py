@@ -190,6 +190,7 @@ class LiaChecker:
         popen = Popen(cmd, stdin = PIPE, stdout = PIPE, bufsize=1,
                       universal_newlines=True)
         self.write_smt(popen.stdin, require_congruence = require_congruence)
+        # self.write_smt(sys.stdout, require_congruence = require_congruence)
 
         response = popen.stdout.readline()
         if response.strip() == "sat":
