@@ -154,8 +154,8 @@ def parse_problem_stream(f):
         line = line.strip()
         if not line: continue
         elif line == '---':
-            assert mode == 'type'
-            mode = 'constraint'
+            if mode == 'constraint': break
+            else: mode = 'constraint'
         elif mode == 'type':
             type_lines.append(line)
         elif mode == 'constraint':
