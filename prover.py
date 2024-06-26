@@ -37,14 +37,18 @@ debug = False
 # (4) in a few iterations, adds extra instances of clauses with free variables
 #     that match the ground constraints
 
-def prove_contradiction(constraints, max_inst_iters = 1, show_model = True):
+def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1):
 
     if debug:
         print("\nConstraints:\n")
         for x in constraints: print(x)
 
     # substitute directed equations
-    constraints2, subst = extract_subst(constraints)
+    if substitute:
+        constraints2, subst = extract_subst(constraints)
+    else:
+        constraints2 = constraints
+        subst = Substitution({})
     if debug:
         print("\nSubstitution:\n")
         for x,value in subst.base_dict.items(): print(f"{x} -> {value}")
@@ -97,7 +101,7 @@ def prove_contradiction(constraints, max_inst_iters = 1, show_model = True):
     iteration = 0
     bool_i = 0
     int_i = 0
-    while iteration <= max_inst_iters:
+    while iteration < max_inst_iters:
         cur_terms = lia.bool_vars[bool_i:] + lia.int_vars[int_i:]
         bool_i = len(lia.bool_vars)
         int_i = len(lia.int_vars)
@@ -110,10 +114,16 @@ def prove_contradiction(constraints, max_inst_iters = 1, show_model = True):
     if debug:
         print()
 
-    lia.solve()
+    return lia
+
+def prove_contradiction(constraints, show_model = True, extensionality = True, **kwargs):
+    lia = constraints_to_lia(constraints)
+
+    lia.solve(require_congruence = extensionality)
 
     if lia.satisfiable:
         if show_model: lia.show_model()
+        _, subst = extract_subst(constraints)
         return subst.substitute(lia.sat_model)
     elif lia.unsatisfiable:
         return UnsatProof()

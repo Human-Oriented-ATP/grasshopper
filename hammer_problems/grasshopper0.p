@@ -38,7 +38,7 @@ tff('constraint_2', axiom, ![Jb:t_jumps, Jc:t_jumps, Ja:t_jumps] : jumps_concat(
 tff('constraint_3', axiom, ![Jsa:t_jump_set] : jumpset_merge(empty_jumpset, Jsa) = Jsa).
 tff('constraint_4', axiom, ![Jsa:t_jump_set] : jumpset_merge(Jsa, empty_jumpset) = Jsa).
 tff('constraint_5', axiom, ![Jsa:t_jump_set, Jsb:t_jump_set] : jumpset_merge(Jsa, Jsb) = jumpset_merge(Jsb, Jsa)).
-tff('constraint_6', axiom, ![Jsa:t_jump_set, Jsc:t_jump_set, Jsb:t_jump_set] : jumpset_merge(jumpset_merge(Jsa, Jsb), Jsc) = jumpset_merge(Jsa, jumpset_merge(Jsb, Jsc))).
+tff('constraint_6', axiom, ![Jsa:t_jump_set, Jsb:t_jump_set, Jsc:t_jump_set] : jumpset_merge(jumpset_merge(Jsa, Jsb), Jsc) = jumpset_merge(Jsa, jumpset_merge(Jsb, Jsc))).
 tff('constraint_7', axiom, ![Ma:t_mine_field] : minefield_concat(empty_minefield, Ma) = Ma).
 tff('constraint_8', axiom, ![Ma:t_mine_field] : minefield_concat(Ma, empty_minefield) = Ma).
 tff('constraint_9', axiom, ![Mb:t_mine_field, Mc:t_mine_field, Ma:t_mine_field] : minefield_concat(minefield_concat(Ma, Mb), Mc) = minefield_concat(Ma, minefield_concat(Mb, Mc))).
@@ -66,8 +66,8 @@ tff('constraint_30', axiom, nodup(empty_jumpset)).
 tff('constraint_31', axiom, ![Jx:t_jump] : nodup(jumpset_singleton(Jx))).
 tff('constraint_32', axiom, ![Jsa:t_jump_set, Jsb:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsa))).
 tff('constraint_33', axiom, ![Jsa:t_jump_set, Jsb:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsb))).
-tff('constraint_34', axiom, ![Jsa:t_jump_set, Jx:t_jump, Jsb:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
-tff('constraint_35', axiom, ![Jx:t_jump, Jy:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
+tff('constraint_34', axiom, ![Jsa:t_jump_set, Jsb:t_jump_set, Jx:t_jump] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
+tff('constraint_35', axiom, ![Jy:t_jump, Jx:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
 tff('constraint_36', axiom, ![Jx:t_jump] : ~(contains(empty_jumpset, Jx))).
 tff('constraint_37', axiom, ![X:$int] : ~(getitem(empty_minefield, X))).
 tff('constraint_38', axiom, ![X:$int] : (getitem(minefield_singleton($true), X) <=> X = 0)).
