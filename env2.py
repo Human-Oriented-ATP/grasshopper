@@ -66,7 +66,7 @@ class LogicContext:
     def prove(self, goal, record_uflia = False, show_model = True):
         ctx = self.clone()
         ctx.add_fact(~goal)
-        return ctx.prove_contradiction(show_model = show_model)
+        return ctx.prove_contradiction(record_uflia = record_uflia, show_model = show_model)
 
     def show_assumed(self):
         print("Assumptions:")
