@@ -2,7 +2,7 @@ from logic import equals, MineField
 from env2 import GrasshopperEnv
 import prover
 
-env = GrasshopperEnv(record_uflia = True)
+env = GrasshopperEnv(record_uflia = False)
 
 jumps = env.jumps
 mines = env.mines
