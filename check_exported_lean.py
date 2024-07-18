@@ -8,9 +8,6 @@ import argparse
 cmd_parser = argparse.ArgumentParser(prog='check_exported_lean.py',
                                      description='Tries to prove a list of constraints about grasshopper contradictory',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-cmd_parser.add_argument("--feat_all", default='50', type=bool, help="number of features")
-cmd_parser.add_argument("--feat_used", default='25', type=int, help="number of features used for xor")
-cmd_parser.add_argument("--samples", default='100', type=int, help="number of samples")
 
 cmd_parser.add_argument('--add_thms',  default=False, action=argparse.BooleanOptionalAction,
                         help = "Add a default list of universally quantified theorems")
