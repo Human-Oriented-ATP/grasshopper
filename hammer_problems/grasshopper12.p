@@ -41,7 +41,7 @@ tff(jumps_ih_type, type, jumps_ih : t_jumps).
 % Constraints
 tff('constraint_0', axiom, ![Ja:t_jumps] : jumps_concat(empty_jumps, Ja) = Ja).
 tff('constraint_1', axiom, ![Ja:t_jumps] : jumps_concat(Ja, empty_jumps) = Ja).
-tff('constraint_2', axiom, ![Jb:t_jumps, Jc:t_jumps, Ja:t_jumps] : jumps_concat(jumps_concat(Ja, Jb), Jc) = jumps_concat(Ja, jumps_concat(Jb, Jc))).
+tff('constraint_2', axiom, ![Ja:t_jumps, Jc:t_jumps, Jb:t_jumps] : jumps_concat(jumps_concat(Ja, Jb), Jc) = jumps_concat(Ja, jumps_concat(Jb, Jc))).
 tff('constraint_3', axiom, ![Jsa:t_jump_set] : jumpset_merge(empty_jumpset, Jsa) = Jsa).
 tff('constraint_4', axiom, ![Jsa:t_jump_set] : jumpset_merge(Jsa, empty_jumpset) = Jsa).
 tff('constraint_5', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : jumpset_merge(Jsa, Jsb) = jumpset_merge(Jsb, Jsa)).
@@ -73,14 +73,14 @@ tff('constraint_30', axiom, nodup(empty_jumpset)).
 tff('constraint_31', axiom, ![Jx:t_jump] : nodup(jumpset_singleton(Jx))).
 tff('constraint_32', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsa))).
 tff('constraint_33', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | nodup(Jsb))).
-tff('constraint_34', axiom, ![Jsb:t_jump_set, Jx:t_jump, Jsa:t_jump_set] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
-tff('constraint_35', axiom, ![Jx:t_jump, Jy:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
+tff('constraint_34', axiom, ![Jsb:t_jump_set, Jsa:t_jump_set, Jx:t_jump] : (~(nodup(jumpset_merge(Jsa, Jsb))) | ~(contains(Jsa, Jx)) | ~(contains(Jsb, Jx)))).
+tff('constraint_35', axiom, ![Jy:t_jump, Jx:t_jump] : (contains(jumpset_singleton(Jx), Jy) <=> Jx = Jy)).
 tff('constraint_36', axiom, ![Jx:t_jump] : ~(contains(empty_jumpset, Jx))).
 tff('constraint_37', axiom, ![X:$int] : ~(getitem(empty_minefield, X))).
 tff('constraint_38', axiom, ![X:$int] : (getitem(minefield_singleton($true), X) <=> X = 0)).
 tff('constraint_39', axiom, ![X:$int] : ~(getitem(minefield_singleton($false), X))).
-tff('constraint_40', axiom, ![Mb:t_mine_field, Ma:t_mine_field, X:$int] : (getitem(minefield_concat(Ma, Mb), X) <=> (getitem(Ma, X) | getitem(Mb, $sum(X, $product(-1, length_c2(Ma))))))).
-tff('constraint_41', axiom, ![Jx:t_jump, X:$int] : ~(getitem(jump_over(Jx), X))).
+tff('constraint_40', axiom, ![Mb:t_mine_field, X:$int, Ma:t_mine_field] : (getitem(minefield_concat(Ma, Mb), X) <=> (getitem(Ma, X) | getitem(Mb, $sum(X, $product(-1, length_c2(Ma))))))).
+tff('constraint_41', axiom, ![X:$int, Jx:t_jump] : ~(getitem(jump_over(Jx), X))).
 tff('constraint_42', axiom, ![Jx:t_jump] : length_c2(jump_over(Jx)) = $sum(length_c1(Jx), -1)).
 tff('constraint_43', axiom, ![Jx:t_jump] : count(jump_over(Jx)) = 0).
 tff('constraint_44', axiom, ![X:t_jump] : ~($lesseq(length_c1(X), 0))).
@@ -91,10 +91,10 @@ tff('constraint_48', axiom, ![X:t_jump_set] : (~(number(X) = 0) | length(X) = 0)
 tff('constraint_49', axiom, ![X:t_mine_field] : $lesseq(0, length_c2(X))).
 tff('constraint_50', axiom, ![X:t_mine_field] : $lesseq(0, count(X))).
 tff('constraint_51', axiom, ![X:t_mine_field] : $lesseq(count(X), length_c2(X))).
-tff('constraint_52', axiom, ![A:t_mine_field, X:$int] : (~(getitem(A, X)) | $lesseq(0, X))).
-tff('constraint_53', axiom, ![A:t_mine_field, X:$int] : (~(getitem(A, X)) | ~($lesseq(length_c2(A), X)))).
-tff('constraint_54', axiom, ![A:t_mine_field, X:$int] : (~(getitem(A, X)) | ~($lesseq(count(A), 0)))).
-tff('constraint_55', axiom, ![A:t_mine_field, X:$int] : (~($lesseq(length_c2(A), count(A))) | ~($lesseq(0, X)) | $lesseq(length_c2(A), X) | getitem(A, X))).
+tff('constraint_52', axiom, ![X:$int, A:t_mine_field] : (~(getitem(A, X)) | $lesseq(0, X))).
+tff('constraint_53', axiom, ![X:$int, A:t_mine_field] : (~(getitem(A, X)) | ~($lesseq(length_c2(A), X)))).
+tff('constraint_54', axiom, ![X:$int, A:t_mine_field] : (~(getitem(A, X)) | ~($lesseq(count(A), 0)))).
+tff('constraint_55', axiom, ![X:$int, A:t_mine_field] : (~($lesseq(length_c2(A), count(A))) | ~($lesseq(0, X)) | $lesseq(length_c2(A), X) | getitem(A, X))).
 tff('constraint_56', axiom, nodup(jumps)).
 tff('constraint_57', axiom, length(jumps) = $sum(size, 1)).
 tff('constraint_58', axiom, length_c2(mines) = size).

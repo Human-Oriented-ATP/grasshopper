@@ -44,9 +44,10 @@ class LogicContext:
 
     def prove_contradiction(self, record_uflia = False, show_model = True):
         # print('Proving subgoal...', end = '')
+        global last_problem_index
+        last_problem_index += 1
+        print(last_problem_index)
         if record_uflia:
-            global last_problem_index
-            last_problem_index += 1
             hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
             record_grasshopper_task(self.facts, hammer_fname)
 
@@ -76,7 +77,7 @@ class LogicContext:
         if not self.assumed_ids: return
         n = len(self.assumed_ids)
         idx = self.assumed_ids[n-1]
-        print('  '*(n-1) + bullet + ' '+ str(self.facts[idx]))        
+        print('  '*n + bullet + ' '+ str(self.facts[idx]))        
 
 class GrasshopperEnv:
     def __init__(self, record_uflia = False, auto_assume = False):

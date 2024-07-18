@@ -426,7 +426,7 @@ def record_grasshopper_task(constraints, basename):
         replace_functions(constraint) for constraint in constraints
     ]
 
-    print("Exporting:", basename)
+    # print("Exporting:", basename)
     for uflia, fname in [(UFLIA_SMT(), basename+'.smt'), (UFLIA_TFF(), basename+'.p')]:
         for constraint in constraints:
             uflia.add_constraint(constraint)
