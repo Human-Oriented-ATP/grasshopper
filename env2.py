@@ -159,6 +159,16 @@ class GrasshopperEnv:
         self.ctx.add_fact(~jumpsr.contains(Jump.X) | (Jump.X.length <= J.length))
         return J, jumpsr
 
+    def pop_avoiding_jump(self, jumps, mines):
+        assert isinstance(jumps, JumpSet) and jumps.is_var, jumps
+        assert isinstance(mines, MineField)
+        self.prove(jumps.number > mines.count)
+        J = Jump.fixed_var(jumps.var_name+'_max')
+        jumpsr = JumpSet.fixed_var(jumps.var_name+'r')
+        self.ctx.add_fact(equals(jumps, JumpSet.merge(J, jumpsr)))
+        self.ctx.add_fact(~mines[J.length])
+        return J, jumpsr
+
     def pop_first_jump(self, jumps):
         assert isinstance(jumps, Jumps) and jumps.is_var, jumps
         self.prove(jumps.number > 0)
@@ -219,13 +229,17 @@ class GrasshopperEnv:
 
     def union_mines(self, mines1, mines2):
         assert isinstance(mines1, MineField) and isinstance(mines2, MineField)
-        self.prove(equals(mines1.length, mines2.length))
+        # self.prove(equals(mines1.length, mines2.length))
         mines = MineField.fixed_var('mines_un')
         self.ctx.add_fact(~mines1[TermInt.X] | mines[TermInt.X])
         self.ctx.add_fact(~mines2[TermInt.X] | mines[TermInt.X])
-        self.ctx.add_fact(equals(mines.length, mines1.length))
-        self.ctx.add_fact(equals(mines.length, mines2.length))
+        self.ctx.add_fact(~(mines1.length >= mines2.length) | equals(mines.length, mines1.length))
+        self.ctx.add_fact(~(mines2.length >= mines1.length) | equals(mines.length, mines2.length))
         self.ctx.add_fact(mines1.count <= mines.count)
         self.ctx.add_fact(mines2.count <= mines.count)
         self.ctx.add_fact(mines.count <= mines1.count + mines2.count)
         return mines
+
+    def check_solved(self):
+        if self.proven: print("Problem Solved!")
+        else: print("Not solved yet!")
