@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from parser import parse_problem_stream
-from prover import prove_contradiction, constraints_to_lia, get_univ_theorems, UnsatProof
+from prover import prove_contradiction, constraints_to_lia, get_univ_theorems, FailedProof
 import sys
 import argparse
 
@@ -45,12 +45,14 @@ if config.to_smt:
         require_congruence = config.extensionality,
     )
 else:
-    res = prove_contradiction(
-        constraints,
-        substitute = config.substitute,
-        max_inst_iters = max_inst_iters,
-        extensionality = config.extensionality,
-        show_model = True,
-    )
-    if isinstance(res, UnsatProof): print("Proven")
-    else: print("No contradiction found. Satisfiable?")
+    try:
+        prove_contradiction(
+            constraints,
+            substitute = config.substitute,
+            max_inst_iters = max_inst_iters,
+            extensionality = config.extensionality,
+        )
+        print("Proven")
+    except FailedProof as e:
+        print(e)
+        print("No contradiction found. Satisfiable?")

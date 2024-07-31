@@ -3,29 +3,49 @@ import itertools
 from itertools import combinations
 
 from smt_lia import LiaChecker
-from uflia_hammer import record_grasshopper_task
 from logic import *
 import prover
+from prover import FailedProof
+
+class FailedProofDisjoint(FailedProof):
+    def __init__(self, model, seq1, seq2, boom):
+        self.model = model
+        self.seq1 = seq1
+        self.seq2 = seq2
+        self.boom = boom
+
+    def seq_str(self, seq):
+        res = []
+        for part in seq.parts:
+            if isinstance(part, TermBool):
+                part = self.model[part]
+                if part.guaranteed: res.append('*')
+                elif part.possible: res.append('-')
+                else: res.append('.')
+            else:
+                l = int(self.model[part.length])
+                if l == 0: continue
+                if equals(self.model[part.count], 0).guaranteed: item = '.'
+                elif equals(self.model[part.count], self.model[part.length]).guaranteed: item = '*'
+                else: item = '-'
+                res.append(' '.join([item]*l))
+
+        return '|'.join(res)
+
+    def boom_str(self):
+        lines = [
+            self.seq_str(self.seq1),
+            self.seq_str(self.seq2),
+            '  '*int(self.model[self.boom]) + '#',
+        ]
+        return '\n'.join(lines)
+
+    def __str__(self):
+        return "Disjointness Proof Failed!\n"+self.boom_str()
 
 def model_display_mines(mines, model):
-    res = []
-    for part in mines.parts:
-        if isinstance(part, TermBool):
-            part = model[part]
-            if part.guaranteed: res.append('*')
-            elif part.possible: res.append('-')
-            else: res.append('.')
-        else:
-            l = int(model[part.length])
-            if l == 0: continue
-            if equals(model[part.count], 0).guaranteed: item = '.'
-            elif equals(model[part.count], model[part.length]).guaranteed: item = '*'
-            else: item = '-'
-            res.append(' '.join([item]*l))
-
-    print('|'.join(res))
-
-last_problem_index = -1
+    dummy = FailedProofDisjoint(model, None, None, None)
+    print(dummy.seq_str(mines))
 
 class LogicContext:
     def __init__(self, env, facts, assumed_ids, res_jumps, boom):
@@ -42,33 +62,6 @@ class LogicContext:
         assert isinstance(fact, TermBool)
         self.facts.append(fact)
 
-    def prove_contradiction(self, record_uflia = False, show_model = True):
-        # print('Proving subgoal...', end = '')
-        global last_problem_index
-        last_problem_index += 1
-        print(last_problem_index)
-        if record_uflia:
-            hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
-            record_grasshopper_task(self.facts, hammer_fname)
-
-        res = prover.prove_contradiction(self.facts, show_model = show_model)
-        # print('   DONE')
-        if isinstance(res, prover.UnsatProof): return True
-        elif isinstance(res, Substitution):
-            _, subst = prover.extract_subst(self.facts)
-            if show_model:
-                model_display_mines(subst[self.env.mines], res)
-                if self.res_jumps is not None:
-                    model_display_mines(subst[self.res_jumps].landings, res)
-                if self.boom is not None:
-                    print('  '*int(res[self.boom]) + '#')
-        return False
-
-    def prove(self, goal, record_uflia = False, show_model = True):
-        ctx = self.clone()
-        ctx.add_fact(~goal)
-        return ctx.prove_contradiction(record_uflia = record_uflia, show_model = show_model)
-
     def show_assumed(self):
         print("Assumptions:")
         for idx in self.assumed_ids:
@@ -80,7 +73,7 @@ class LogicContext:
         print('  '*n + bullet + ' '+ str(self.facts[idx]))        
 
 class GrasshopperEnv:
-    def __init__(self, record_uflia = False, auto_assume = False):
+    def __init__(self, auto_assume = False, record_uflia = False, show_record_step = False):
         self.size = TermInt.fixed_var('size')
         self.jumps = JumpSet.fixed_var('jumps')
         self.mines = MineField.fixed_var('mines')
@@ -94,22 +87,27 @@ class GrasshopperEnv:
         self.ctx = LogicContext(self, univ_theorems + ctx_theorems, [], None, None)
         self.ctx_stack = []
         self.proven = False
-        self.record_uflia = record_uflia
+        self.prover_kwargs = {
+            'record_uflia' : record_uflia,
+            'show_step' : show_record_step,
+        }
         self.auto_assume = auto_assume
 
     def prove(self, goal):
-        show_model = (goal.f == conjunction) and not self.auto_assume
-        if not self.ctx.prove(goal, record_uflia = self.record_uflia, show_model = show_model):
+        remains_to_check = []
+        try:
+            prover.prove_contradiction(self.ctx.facts + [~goal], **self.prover_kwargs)
+        except FailedProof as e:
             if goal.f == conjunction:
-                for subgoal in goal.args:
-                    self.prove(subgoal)
+                remains_to_check = goal.args
             elif self.auto_assume:
                 self.split_case(goal, automatic = True)
             else:
-                raise Exception("Failed to prove: "+str(goal))
-    def prove_contradiction(self):
-        if not self.ctx.prove_contradiction(record_uflia = self.record_uflia):
-            raise Exception("Failed to prove contradiction")
+                print("Failed to prove: "+str(goal))
+                raise
+
+        for subgoal in remains_to_check:
+            self.prove(subgoal)
 
     def split_case(self, prop, automatic = False):
         assert isinstance(prop, TermBool)
@@ -122,7 +120,8 @@ class GrasshopperEnv:
         else: bullet = 'M*'
         self.ctx.show_last_assump(bullet)
 
-    def provide_jumps(self, jumps):
+    def solve_with_jumps(self, jumps):
+
         assert isinstance(jumps, Jumps)
         self.prove(equals(jumps.s, self.jumps))
         boom = TermInt.fixed_var('boom')
@@ -130,11 +129,20 @@ class GrasshopperEnv:
         self.ctx.add_fact(self.mines[boom])
         self.ctx.boom = boom
         self.ctx.res_jumps = jumps
-        return boom
 
-    def finish_case(self):
+        # finish case
 
-        self.prove_contradiction()
+        try:
+            prover.prove_contradiction(self.ctx.facts, **self.prover_kwargs)
+        except FailedProof as e:
+            if e.model is not None:
+                _, subst = prover.extract_subst(self.ctx.facts)
+                raise FailedProofDisjoint(
+                    e.model,
+                    subst[self.mines],
+                    subst[jumps.landings],
+                    boom,
+                ) from e
 
         if self.ctx_stack:
             self.ctx = self.ctx_stack.pop()

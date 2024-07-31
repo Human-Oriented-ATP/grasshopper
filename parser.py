@@ -1,7 +1,7 @@
 import re
 from contextlib import contextmanager
 from logic import *
-from prover import prove_contradiction, UnsatProof
+from prover import prove_contradiction, FailedProof
 import prover
 import os
 
@@ -210,10 +210,11 @@ if __name__ == "__main__":
                 print(constraint)
             print("--------------------------------------------")
         prover.debug = debug
-        res = prove_contradiction(univ_theorems + constraints, show_model = debug)
-        if not isinstance(res, UnsatProof):
+        try:
+            res = prove_contradiction(univ_theorems + constraints)
+            num_proven += 1
+        except FailedProof:
             print(f"{fname}: Proof failed")
         num_total += 1
-        if isinstance(res, UnsatProof):
-            num_proven += 1
+            
     print(f"Proven: {num_proven} / {num_total}")
