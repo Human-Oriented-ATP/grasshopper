@@ -5,7 +5,7 @@ from itertools import combinations
 from smt_lia import LiaChecker
 from logic import *
 import prover
-from prover import FailedProof
+from prover import FailedProof, simplify_exist_clause
 
 class FailedProofDisjoint(FailedProof):
     def __init__(self, model, seq1, seq2, boom):
@@ -48,15 +48,13 @@ def model_display_mines(mines, model):
     print(dummy.seq_str(mines))
 
 class LogicContext:
-    def __init__(self, env, facts, assumed_ids, res_jumps, boom):
+    def __init__(self, env, facts, assumed_ids):
         self.env = env
         self.facts = list(facts)
         self.assumed_ids = list(assumed_ids)
-        self.res_jumps = res_jumps
-        self.boom = boom
 
     def clone(self):
-        return LogicContext(self.env, self.facts, self.assumed_ids, self.res_jumps, self.boom)
+        return LogicContext(self.env, self.facts, self.assumed_ids)
     def add_fact(self, fact, assumed = False):
         if assumed: self.assumed_ids.append(len(self.facts))
         assert isinstance(fact, TermBool)
@@ -66,11 +64,26 @@ class LogicContext:
         print("Assumptions:")
         for idx in self.assumed_ids:
             print('*', self.facts[idx])
+    def show_all(self):
+        print("Facts:")
+        assumed_set = set(self.assumed_ids)
+        for idx, fact in enumerate(self.facts):
+            if idx in assumed_set: bullet = '*'
+            else: bullet = '.'
+            print(bullet, fact)
     def show_last_assump(self, bullet = ' *'):
         if not self.assumed_ids: return
         n = len(self.assumed_ids)
         idx = self.assumed_ids[n-1]
-        print('  '*n + bullet + ' '+ str(self.facts[idx]))        
+        print('  '*n + bullet + ' '+ str(self.facts[idx]))
+    def remove_facts(self, removed):
+        removed = set(removed)
+        facts = list(filter(lambda fact: fact not in removed, self.facts))
+        new_to_ori = [idx for idx,fact in enumerate(self.facts) if fact not in removed]
+        ori_to_new = {ori:new for new,ori in enumerate(new_to_ori)}
+        assumed_ids = [ori_to_new[idx] for idx in self.assumed_ids if idx in ori_to_new]
+        self.facts = facts
+        self.assumed_ids = assumed_ids
 
 class GrasshopperEnv:
     def __init__(self, auto_assume = False, record_uflia = False, show_record_step = False):
@@ -84,7 +97,7 @@ class GrasshopperEnv:
             equals(self.mines.length, self.size),
             self.jumps.number > self.mines.count,
         ]
-        self.ctx = LogicContext(self, univ_theorems + ctx_theorems, [], None, None)
+        self.ctx = LogicContext(self, univ_theorems + ctx_theorems, [])
         self.ctx_stack = []
         self.proven = False
         self.prover_kwargs = {
@@ -124,25 +137,48 @@ class GrasshopperEnv:
 
         assert isinstance(jumps, Jumps)
         self.prove(equals(jumps.s, self.jumps))
+
         boom = TermInt.fixed_var('boom')
-        self.ctx.add_fact(jumps.landings[boom])
-        self.ctx.add_fact(self.mines[boom])
-        self.ctx.boom = boom
-        self.ctx.res_jumps = jumps
+        landings_boom = jumps.landings[boom]
+        mines_boom = self.mines[boom]
 
         # finish case
 
+        remaining_cases = []
         try:
-            prover.prove_contradiction(self.ctx.facts, **self.prover_kwargs)
+            prover.prove_contradiction(
+                self.ctx.facts + [landings_boom, mines_boom],
+                **self.prover_kwargs,
+            )
         except FailedProof as e:
-            if e.model is not None:
-                _, subst = prover.extract_subst(self.ctx.facts)
-                raise FailedProofDisjoint(
-                    e.model,
-                    subst[self.mines],
-                    subst[jumps.landings],
-                    boom,
-                ) from e
+            _, subst = prover.extract_subst(self.ctx.facts)
+            landings_boom = subst[landings_boom]
+            mines_boom = subst[mines_boom]
+            for landings_boom_case in landings_boom.disj_args:
+                for mines_boom_case in mines_boom.disj_args:
+                    try:
+                        prover.prove_contradiction(
+                            self.ctx.facts + [landings_boom_case, mines_boom_case]
+                        )
+                    except:
+                        boom_case = simplify_exist_clause(
+                            landings_boom_case & mines_boom_case,
+                            can_eliminate = lambda v: v == boom,
+                        )
+                        remaining_cases.append(boom_case)
+            if any(boom in boom_case.all_vars for boom_case in remaining_cases) or not self.auto_assume:
+                if e.model is not None:
+                    raise FailedProofDisjoint(
+                        e.model,
+                        subst[self.mines],
+                        subst[jumps.landings],
+                        boom,
+                    ) from e
+                else:
+                    raise
+
+        for boom_case in remaining_cases:
+            self.split_case(~boom_case, automatic = True)
 
         if self.ctx_stack:
             self.ctx = self.ctx_stack.pop()

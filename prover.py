@@ -1,4 +1,4 @@
-from logic import equals, Substitution, TermBool, TermInt, Jump, Jumps, MineField, JumpSet
+from logic import equals, Substitution, TermBool, TermInt, Jump, Jumps, MineField, JumpSet, FREE_VAR
 from auto_inst import AutoInstance
 from smt_lia import LiaChecker
 from uflia_hammer import record_grasshopper_task
@@ -41,8 +41,27 @@ def extract_subst(constraints):
     res = [subst[constraint] for constraint in res]
     return res, subst    
 
+# automatically closes assumptions of the form (X = ...) where X is free
+def simplify_clause(clause, can_eliminate = lambda x: x.var_type == FREE_VAR):
+    changed = True
+    while changed:
+        changed = False
+        for literal in clause.disj_args:
+            nlit = ~literal
+            if nlit.f == equals and isinstance(nlit.args[0], TermInt):
+                zero = nlit.args[0] - nlit.args[1]
+                for x,coef in zip(zero.summands, zero.muls):
+                    if x.is_var and can_eliminate(x) and abs(coef) == 1:
+                        subst = Substitution({ x : zero*(-coef) + x })
+                        clause = subst[clause]
+                if changed: break
+    return clause
+
+# analog to simplify_clause assuming existentially quantified variables and conjunctive clause
+def simplify_exist_clause(clause, *args, **kwargs):
+    return ~simplify_clause(~clause, *args, **kwargs)
+
 # splits constraints into lists of ground terms, and quantified AutoInstances 
-# automatically closes assumptions of the form (X = ...)
 
 def separate_ground(constraints):
     ground = []
@@ -56,18 +75,7 @@ def separate_ground(constraints):
             constraint = constraint.clausify()
             for clause in constraint.conj_args:
                 # try to simplify a dis-equality
-                changed = True
-                while changed:
-                    changed = False
-                    for literal in clause.disj_args:
-                        nlit = ~literal
-                        if nlit.f == equals and isinstance(nlit.args[0], TermInt):
-                            zero = nlit.args[0] - nlit.args[1]
-                            for x,coef in zip(zero.summands, zero.muls):
-                                if x.is_free_var and abs(coef) == 1:
-                                    subst = Substitution({ x : zero*(-coef) + x })
-                                    clause = subst[clause]
-                            if changed: break
+                clause = simplify_clause(clause)
                 if any(x.is_free_var for x in clause.all_vars):
                     quantified.append(AutoInstance(clause))
                 else:
