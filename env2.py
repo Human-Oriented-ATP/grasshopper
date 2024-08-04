@@ -43,6 +43,12 @@ class FailedProofDisjoint(FailedProof):
     def __str__(self):
         return "Disjointness Proof Failed!\n"+self.boom_str()
 
+class FailedProofSubgoal(FailedProof):
+    def __init__(self, subgoal):
+        self.subgoal = subgoal
+    def __str__(self):
+        return f"Failed to prove: {self.subgoal}"
+
 def model_display_mines(mines, model):
     dummy = FailedProofDisjoint(model, None, None, None)
     print(dummy.seq_str(mines))
@@ -116,8 +122,7 @@ class GrasshopperEnv:
             elif self.auto_assume:
                 self.split_case(goal, automatic = True)
             else:
-                print("Failed to prove: "+str(goal))
-                raise
+                raise FailedProofSubgoal(goal) from e
 
         for subgoal in remains_to_check:
             self.prove(subgoal)
@@ -208,10 +213,10 @@ class GrasshopperEnv:
         assert isinstance(jumps, JumpSet) and jumps.is_var, jumps
         assert isinstance(mines, MineField)
         self.prove(jumps.number > mines.count)
-        J = Jump.fixed_var(jumps.var_name+'_max')
+        J = Jump.fixed_var(jumps.var_name+'_avoid')
         jumpsr = JumpSet.fixed_var(jumps.var_name+'r')
         self.ctx.add_fact(equals(jumps, JumpSet.merge(J, jumpsr)))
-        self.ctx.add_fact(~mines[J.length])
+        self.ctx.add_fact(~mines[J.length-1])
         return J, jumpsr
 
     def pop_first_jump(self, jumps):
