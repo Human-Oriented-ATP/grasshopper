@@ -15,8 +15,8 @@ cmd_parser.add_argument('--substitute',  default=False, action=argparse.BooleanO
                         help = "Substitutes given equalities")
 cmd_parser.add_argument('--instantiate',  default=False, action=argparse.BooleanOptionalAction,
                         help = "Instantiate universally quantified constraints (default: ignore them)")
-cmd_parser.add_argument('--extensionality',  default=False, action=argparse.BooleanOptionalAction,
-                        help = "Add extensionality rules to the SMT solver")
+cmd_parser.add_argument('--congruence',  default=False, action=argparse.BooleanOptionalAction,
+                        help = "Add congruence rules to the SMT solver")
 cmd_parser.add_argument('--to_smt',  default=False, action=argparse.BooleanOptionalAction,
                         help = "Outputs an smt-file rather than calling a solver")
 
@@ -42,7 +42,7 @@ if config.to_smt:
     )
     lia.write_smt(
         sys.stdout,
-        require_congruence = config.extensionality,
+        require_congruence = config.congruence,
     )
 else:
     try:
@@ -50,7 +50,7 @@ else:
             constraints,
             substitute = config.substitute,
             max_inst_iters = max_inst_iters,
-            extensionality = config.extensionality,
+            congruence = config.congruence,
         )
         print("Proven")
     except FailedProof as e:

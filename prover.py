@@ -158,11 +158,11 @@ def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1):
 
 last_problem_index = -1
 
-def prove_contradiction(constraints, extensionality = True, record_uflia = False, show_step = False, **kwargs):
+def prove_contradiction(constraints, congruence = True, record_uflia = False, show_step = False, **kwargs):
     global last_problem_index
     lia = constraints_to_lia(constraints, **kwargs)
 
-    lia.solve(require_congruence = extensionality)
+    lia.solve(require_congruence = congruence)
 
     if not lia.unsatisfiable:
         if lia.satisfiable:
