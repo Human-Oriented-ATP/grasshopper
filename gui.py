@@ -34,14 +34,15 @@ class Splittable(GObject):
         return res
 
 class GJumps(Splittable):
-    def __init__(self, env, jumps, layer = 0):
+    def __init__(self, env, model, jumps, layer = 0):
         self.layer = layer
 
         self.env = env
+        self.model = model
         self.jumps = jumps
-        self.jumps_val = env.model[jumps].value()
+        self.jumps_val = model[jumps].value()
 
-        self.length = env.model[jumps.length].value()
+        self.length = model[jumps.length].value()
 
         self.splits = []
         split = 0
@@ -57,7 +58,7 @@ class GJumps(Splittable):
         hl_splits = set()
         last = 0
         for part in self.jumps.subsequences:
-            last += self.env.model[part.number].value()
+            last += self.model[part.number].value()
             hl_splits.add(last)
 
         for i,split in enumerate(self.splits):
@@ -81,11 +82,11 @@ class GJumps(Splittable):
     def _make_var(self, name, value):
         if len(value) == 1:
             v = Jump.shared_var(name)
-            self.env.model[v] = Jump(value[0])
+            self.model[v] = Jump(value[0])
             return Jumps([v])
         else:
             v = Jumps.shared_var(name)
-            self.env.model[v] = Jumps(value)
+            self.model[v] = Jumps(value)
             return v
 
     def split_raw(self, n):
@@ -96,7 +97,7 @@ class GJumps(Splittable):
         index = 0
         split1 = 0
         for part in self.jumps.subsequences:
-            split2 = split1 + self.env.model[part.number].value()
+            split2 = split1 + self.model[part.number].value()
             if i < split2: break
             index += 1
             split1 = split2
@@ -109,10 +110,10 @@ class GJumps(Splittable):
             part = self.jumps.parts[index]
             assert isinstance(part, Jumps)
             assert part.is_var
-            part_val = self.env.model[part].value()
+            part_val = self.model[part].value()
             part0 = self._make_var(part.var_name+'0', part_val[:i-split1])
             part1 = self._make_var(part.var_name+'1', part_val[i-split1:])
-            self.env.add_constraint(equals(part0 + part1, part))
+            self.env.ctx.add_fact(equals(part0 + part1, part))
             jumps0 = self.jumps.parts[:index] + (part0,)
             jumps1 = (part1,) + self.jumps.parts[index+1:]
             jumps0 = Jumps.concat(*jumps0)
@@ -122,25 +123,26 @@ class GJumps(Splittable):
         print('Left:', jumps0)
         print('Right:', jumps1)
         print()
-        return GJumps(self.env, jumps0), GJumps(self.env, jumps1)
+        return GJumps(self.env, self.model, jumps0), GJumps(self.env, self.model, jumps1)
 
     def join_raw(self, other):
         print('Left:', self.jumps)
         print('Right:', other.jumps)
-        res = GJumps(self.env, self.jumps + other.jumps)
+        res = GJumps(self.env, self.model, self.jumps + other.jumps)
         print('Join:', res.jumps)
         print()
         return res
 
 class GMines(Splittable):
-    def __init__(self, env, mines, layer = 0):
+    def __init__(self, env, model, mines, layer = 0):
         self.layer = layer
 
         self.env = env
+        self.model = model
         self.mines = mines
-        self.mines_val = env.model[mines].value()
+        self.mines_val = model[mines].value()
 
-        self.length = env.model[mines.length].value()
+        self.length = model[mines.length].value()
 
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
         super().__init__()
@@ -151,7 +153,7 @@ class GMines(Splittable):
         hl_splits = set()
         last = 0
         for part in self.mines.subsequences:
-            last += self.env.model[part.length].value()
+            last += self.model[part.length].value()
             hl_splits.add(last)
 
         for i in range(1,self.length):
@@ -182,11 +184,11 @@ class GMines(Splittable):
     def _make_var(self, name, value):
         if len(value) == 1:
             v = TermBool.shared_var(name)
-            self.env.model[v] = TermBool(value[0])
+            self.model[v] = TermBool(value[0])
             return MineField(v)
         else:
             v = MineField.shared_var(name)
-            self.env.model[v] = MineField(value)
+            self.model[v] = MineField(value)
             return v
 
     def split_raw(self, n):
@@ -194,7 +196,7 @@ class GMines(Splittable):
         index = 0
         split1 = 0
         for part in self.mines.subsequences:
-            split2 = split1 + self.env.model[part.length].value()
+            split2 = split1 + self.model[part.length].value()
             if n < split2: break
             index += 1
             split1 = split2
@@ -212,10 +214,10 @@ class GMines(Splittable):
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
-            part_val = self.env.model[part].value()
+            part_val = self.model[part].value()
             part0 = self._make_var(part.var_name+'0', part_val[:n-split1])
             part1 = self._make_var(part.var_name+'1', part_val[n-split1:])
-            self.env.add_constraint(equals(part0 + part1, part))
+            self.env.ctx.add_fact(equals(part0 + part1, part))
             mines0 = self.mines.parts[:index] + (part0,)
             mines1 = (part1,) + self.mines.parts[index+1:]
             mines0 = MineField.concat(*mines0)
@@ -224,14 +226,24 @@ class GMines(Splittable):
         print('Left:', mines0)
         print('Right:', mines1)
         print()
-        return GMines(self.env, mines0), GMines(self.env, mines1)
+        return GMines(self.env, self.model, mines0), GMines(self.env, self.model, mines1)
 
     def join_raw(self, other):
         print('Left:', self.mines)
         print('Right:', other.mines)
-        res = GMines(self.env, self.mines + other.mines)
+        res = GMines(self.env, self.model, self.mines + other.mines)
         print('Join:', res.mines)
         return res
+
+class Model:
+    def __init__(self, base_dict):
+        self.subst = Substitution(base_dict)
+    def __getitem__(self, key):
+        return self.subst[key]
+    def __setitem__(self, key, value):
+        base_dict = dict(self.subst.base_dict)
+        base_dict[key] = value
+        self.subst = Substitution(base_dict)
 
 class GrasshopperGui(Gtk.Window):
 
@@ -239,6 +251,13 @@ class GrasshopperGui(Gtk.Window):
         super().__init__()
 
         self.env = GrasshopperEnv()
+        jumps = self.env.order_jumps(self.env.jumps)
+        mines = self.env.mines
+        self.model = Model({
+            jumps : Jumps([1,2,4]),
+            mines : MineField([0,0,1,0,1,0]),
+        })
+
         self.obj_grasp = None
         self.mb_grasp = None
 
@@ -274,8 +293,8 @@ class GrasshopperGui(Gtk.Window):
         self.shift = (0,0)
 
         self.objects = [
-            GJumps(self.env, self.env.jumps),
-            GMines(self.env, self.env.mines),
+            GJumps(self.env, self.model, jumps),
+            GMines(self.env, self.model, mines),
         ]
         self.objects[0].translate(-1,0)
 

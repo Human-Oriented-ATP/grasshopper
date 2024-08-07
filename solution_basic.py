@@ -1,5 +1,5 @@
 from logic import equals, MineField
-from env2 import GrasshopperEnv
+from env import GrasshopperEnv
 import prover
 
 env = GrasshopperEnv(record_uflia = False, show_record_step = True)
