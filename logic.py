@@ -658,7 +658,7 @@ class TermSequence(Term):
     def value(self):
         cls = type(self)
         if self.f != cls.concat: raise Exception("Sequence not evaluated")
-        elif not all(isinstance(arg, cls.base_type) for arg in self. args):
+        elif not all(isinstance(arg, cls.base_type) for arg in self.args):
             raise Exception("Sequence contains unevaluated subsequence")
         return [arg.value() for arg in self.args]
 
@@ -891,6 +891,16 @@ class JumpSet(Term):
             JumpSet.disjoint(a,b)
             for a,b in itertools.combinations(self.args, 2)
         ))
+
+    def value(self):
+        if self.f != JumpSet.merge: raise Exception("JumpSet not evaluated")
+        elif not all(isinstance(arg, Jump) for arg in self.args):
+            raise Exception("JumpSet contains unevaluated subset")
+        res_l = [arg.value() for arg in self.args]
+        res = set(res_l)
+        if len(res_l) > len(res):
+            raise Exception("JumpSet contains a jump twice")
+        return res
 
 JumpSet.merge.out_type = JumpSet
 JumpSet.merge.notation = JumpSet.merge_notation

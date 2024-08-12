@@ -30,7 +30,8 @@ class Splittable(GObject):
         if other.center[1] != self.center[1]: return None
         if other.center[0] != self.center[0] + self.length: return None
         res = self.join_raw(other)
-        res.center = self.center
+        if res is not None:
+            res.center = self.center
         return res
 
 class GJumps(Splittable):
@@ -40,44 +41,71 @@ class GJumps(Splittable):
         self.env = env
         self.model = model
         self.jumps = jumps
-        self.jumps_val = model[jumps].value()
+        assert isinstance(jumps, (Jumps, JumpSet))
+        
+        if isinstance(self.jumps, Jumps):
+            parts = self.jumps.subsequences
+        else:
+            parts = [jumps]
 
-        self.length = model[jumps.length].value()
+        self.numbers = [
+            model[part.number].value()
+            for part in parts
+        ]
+        self.lengths = [
+            model[part.length].value()
+            for part in parts
+        ]
+        self.length = sum(self.lengths)
 
-        self.splits = []
+        self.splits = [] # cumsum of lengths
         split = 0
-        for l in self.jumps_val[:-1]:
+        for l in self.lengths[:-1]:
             split += l
             self.splits.append(split)
+
+        self.labels = [] # numerical labels
+        for l,n,split in zip(self.lengths, self.numbers, [0] + self.splits):
+            if n > 1:
+                label = GText(str(n), layer)
+                label.scale(0.7 / label.bounding_box.height)
+                label.move_center_to(split + l/2, 0.5)
+                self.labels.append(label)
+
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
         super().__init__()
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
 
-        hl_splits = set()
-        last = 0
-        for part in self.jumps.subsequences:
-            last += self.model[part.number].value()
-            hl_splits.add(last)
+        cr.set_line_width(0.1)
+        if isinstance(self.jumps, Jumps):
+            cr.set_source_rgb(0,0,0)
+        else:
+            cr.set_source_rgb(0.5, 0, 1.0) # purple
 
-        for i,split in enumerate(self.splits):
-            cr.move_to(split, 1)
-            cr.line_to(split, 0)
-            if i+1 in hl_splits:
-                cr.set_source_rgb(0,0,0)
-            else:
-                cr.set_source_rgb(0.7,0.7,0.7)
-            cr.set_line_width(0.1)
-            cr.stroke()
+        for l,n,split in zip(self.lengths, self.numbers, [0] + self.splits):
+            if split > 0:
+                cr.move_to(split, 1)
+                cr.line_to(split, 0)
+                cr.stroke()
+            if n > 1:
+                cr.move_to(max(split, 0.25), 0.5)
+                cr.line_to(min(split + l, self.length - 0.25), 0.5)
+                cr.stroke()
 
         cr.move_to(0, 0)
         cr.line_to(0.5, 1)
         cr.line_to(self.length-0.5, 1)
         cr.line_to(self.length, 0)
-        cr.set_source_rgb(0,0,0)
-        cr.set_line_width(0.1)
         cr.stroke()
+
+        for label in self.labels:
+            bb = label.bounding_box
+            cr.set_source_rgb(1,1,1)
+            cr.rectangle(bb.left - 0.1, bb.bottom, bb.width + 0.2, bb.height)
+            cr.fill()
+            label.draw(cr, layer)
 
     def _make_var(self, name, value):
         if len(value) == 1:
@@ -90,34 +118,11 @@ class GJumps(Splittable):
             return v
 
     def split_raw(self, n):
+        if isinstance(self.jumps, JumpSet): return None
         if n not in self.splits: return None
-        i = self.splits.index(n)+1
-        del n
-
-        index = 0
-        split1 = 0
-        for part in self.jumps.subsequences:
-            split2 = split1 + self.model[part.number].value()
-            if i < split2: break
-            index += 1
-            split1 = split2
-        assert split1 < split2
-
-        if i == split1:
-            jumps0 = Jumps.concat(*self.jumps.parts[:index])
-            jumps1 = Jumps.concat(*self.jumps.parts[index:])
-        else:
-            part = self.jumps.parts[index]
-            assert isinstance(part, Jumps)
-            assert part.is_var
-            part_val = self.model[part].value()
-            part0 = self._make_var(part.var_name+'0', part_val[:i-split1])
-            part1 = self._make_var(part.var_name+'1', part_val[i-split1:])
-            self.env.ctx.add_fact(equals(part0 + part1, part))
-            jumps0 = self.jumps.parts[:index] + (part0,)
-            jumps1 = (part1,) + self.jumps.parts[index+1:]
-            jumps0 = Jumps.concat(*jumps0)
-            jumps1 = Jumps.concat(*jumps1)
+        index = self.splits.index(n)+1
+        jumps0 = Jumps.concat(*self.jumps.parts[:index])
+        jumps1 = Jumps.concat(*self.jumps.parts[index:])
 
         print('Split:', self.jumps)
         print('Left:', jumps0)
@@ -126,6 +131,8 @@ class GJumps(Splittable):
         return GJumps(self.env, self.model, jumps0), GJumps(self.env, self.model, jumps1)
 
     def join_raw(self, other):
+        if isinstance(self.jumps, JumpSet): return None
+        if isinstance(other.jumps, JumpSet): return None
         print('Left:', self.jumps)
         print('Right:', other.jumps)
         res = GJumps(self.env, self.model, self.jumps + other.jumps)
@@ -202,22 +209,20 @@ class GMines(Splittable):
             split1 = split2
 
         assert split1 < split2
-        print(split1, n, split2)
-        print(split1, n, split1 == n)
-        print(type(split1), type(n), split1 == n)
         if n == split1:
-            print('case A')
             mines0 = MineField.concat(*self.mines.parts[:index])
             mines1 = MineField.concat(*self.mines.parts[index:])
         else:
-            print('case B')
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
             part_val = self.model[part].value()
-            part0 = self._make_var(part.var_name+'0', part_val[:n-split1])
-            part1 = self._make_var(part.var_name+'1', part_val[n-split1:])
-            self.env.ctx.add_fact(equals(part0 + part1, part))
+            local_split = n-split1
+            part0_val = part_val[:local_split]
+            part1_val = part_val[local_split:]
+            part0, part1 = self.env.split_mines(part, TermInt(local_split))
+            self.model[part0] = MineField(part0_val)
+            self.model[part1] = MineField(part1_val)
             mines0 = self.mines.parts[:index] + (part0,)
             mines1 = (part1,) + self.mines.parts[index+1:]
             mines0 = MineField.concat(*mines0)
@@ -250,11 +255,11 @@ class GrasshopperGui(Gtk.Window):
     def __init__(self, win_size = (800, 600)):
         super().__init__()
 
-        self.env = GrasshopperEnv()
-        jumps = self.env.order_jumps(self.env.jumps)
+        self.env = GrasshopperEnv(auto_assume = True)
+        jumps = self.env.jumps
         mines = self.env.mines
         self.model = Model({
-            jumps : Jumps([1,2,4]),
+            jumps : JumpSet([1,2,4]),
             mines : MineField([0,0,1,0,1,0]),
         })
 
@@ -345,6 +350,13 @@ class GrasshopperGui(Gtk.Window):
 
     def add_object(self, obj):
         self.objects.append(obj)
+    def remove_objects(self, *removed):
+        removed = set(removed)
+        self.selection.difference_update(removed)
+        self.objects = [
+            obj for obj in self.objects
+            if obj not in removed
+        ]
 
     def grasp_objects(self, objs, x,y):
         self.obj_grasp = []
@@ -467,9 +479,10 @@ class GrasshopperGui(Gtk.Window):
         # print("Press:", keyval_name)
         if keyval_name == "Escape":
             Gtk.main_quit()
-        # elif keyval_name == "Left":
-        #     self.inf_index = max(self.inf_index-1, 0)
-        #     self.darea.queue_draw()
+        elif keyval_name == 'm':
+            self.pop_max_selected()
+        elif keyval_name == 'i':
+            self.induction_selected()
         # elif keyval_name == "Right":
         #     self.inf_index = min(self.inf_index+1, len(self.ginferences)-1)
         #     self.darea.queue_draw()
@@ -513,6 +526,64 @@ class GrasshopperGui(Gtk.Window):
                 obj.draw(cr, layer)
 
         cr.restore()
+
+    def pop_max_selected(self):
+        if len(self.selection) != 1: return
+        [jumps] = self.selection
+        if not isinstance(jumps, GJumps): return
+        if not isinstance(jumps.jumps, JumpSet): return
+        try:
+            J, jumps_rest = self.pop_max(jumps)
+        except Exception as e:
+            print(e)
+            return
+        self.remove_objects(jumps)
+        self.add_object(J)
+        self.add_object(jumps_rest)
+        self.darea.queue_draw()
+
+    def pop_max(self, jumps):
+        val = self.model[jumps.jumps].value()
+        J_val = max(val)
+        rest_val = set(val)
+        rest_val.remove(J_val)
+        J, rest = self.env.pop_max_jump(jumps.jumps)
+        self.model[J] = Jump(J_val)
+        self.model[rest] = JumpSet(rest_val)
+        J_gr = GJumps(self.env, self.model, Jumps(J))
+        J_gr.translate(*jumps.center)
+        rest_gr = GJumps(self.env, self.model, rest)
+        rest_gr.translate(*jumps.center)
+        rest_gr.translate(J_val, 0)
+        return J_gr, rest_gr
+
+    def induction_selected(self):
+        if len(self.selection) != 2: return
+        [jumps, mines] = self.selection
+        if isinstance(mines, GJumps): jumps, mines = mines, jumps
+        if not isinstance(jumps, GJumps): return
+        if not isinstance(jumps.jumps, JumpSet): return
+        if not isinstance(mines, GMines): return
+        try:
+            jumpso = self.induction(jumps, mines)
+        except Exception as e:
+            print(e)
+            return
+        self.remove_objects(jumps)
+        self.add_object(jumpso)
+        self.darea.queue_draw()
+
+    def induction(self, jumps, mines):
+        assert jumps.center[0]+1 == mines.center[0]
+        assert jumps.length == mines.length+1
+        jumpso = self.env.induction(jumps.jumps, mines.mines)
+        val = self.model[jumps.jumps].value()
+        jumpso_val = list(val)
+        random.shuffle(jumpso_val)
+        self.model[jumpso] = Jumps(jumpso_val)
+        jumpso_gr = GJumps(self.env, self.model, jumpso)
+        jumpso_gr.translate(*jumps.center)
+        return jumpso_gr
 
 if __name__ == "__main__":
 

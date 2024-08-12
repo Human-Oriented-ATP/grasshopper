@@ -138,16 +138,17 @@ class GObject:
     def bounding_box(self):
         return self.raw_bounding_box.scale(self.scale_coef).translate(*self.center)
     def translate(self, x,y):
-        self.center = (self.center[0]+x, self.center[0]+y)
-    def scale(self, scale):
+        self.center = (self.center[0]+x, self.center[1]+y)
+    def scale(self, scale_coef):
         self.scale_coef *= scale_coef
     def fit_to(self, bounding_box):
         self.scale_coef = min(
             bounding_box.width / self.raw_bounding_box.width,
             bounding_box.height / self.raw_bounding_box.height,
         )
+        self.move_to(*bounding_box.center)
+    def move_center_to(self, x2,y2):
         x1,y1 = self.raw_bounding_box.center
-        x2,y2 = bounding_box.center
         self.center = (x2-x1*self.scale_coef, y2-y1*self.scale_coef)
 
     def parent_with_type(self, t):
