@@ -240,16 +240,6 @@ class GMines(Splittable):
         print('Join:', res.mines)
         return res
 
-class Model:
-    def __init__(self, base_dict):
-        self.subst = Substitution(base_dict)
-    def __getitem__(self, key):
-        return self.subst[key]
-    def __setitem__(self, key, value):
-        base_dict = dict(self.subst.base_dict)
-        base_dict[key] = value
-        self.subst = Substitution(base_dict)
-
 class GrasshopperGui(Gtk.Window):
 
     def __init__(self, win_size = (800, 600)):

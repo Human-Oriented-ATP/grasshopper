@@ -449,6 +449,16 @@ class Substitution:
             base_dict.setdefault(key, value)
         return Substitution(base_dict)
 
+class Model:
+    def __init__(self, base_dict):
+        self.subst = Substitution(base_dict)
+    def __getitem__(self, key):
+        return self.subst[key]
+    def __setitem__(self, key, value):
+        base_dict = dict(self.subst.base_dict)
+        base_dict[key] = value
+        self.subst = Substitution(base_dict)
+
 class TermInt(Term):
     def __init__(self, *args, **kwargs):
         if self.initialized: return
