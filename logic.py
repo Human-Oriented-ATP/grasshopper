@@ -57,6 +57,8 @@ class Term:
             return self.f.notation(*self.args, **self.meta_args)
         else:
             return self.var_name
+    def __repr__(self):
+        return f"Term({self.__str__()})"
 
     @property
     def initialized(self):

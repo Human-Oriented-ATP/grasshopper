@@ -13,7 +13,7 @@ def solution(env):
     jumpso = env.induction(jumps, mines1)
     env.solve_with_jumps(J + jumpso)
 
-    env.ctx.remove_facts(env.ctx.facts[-3:-1]) # a hack to traceback before IH step
+    env.ctx.remove_var(jumpso) # a hack to traceback before IH step
 
     mines00, mines01 = env.split_mines(mines0, J.length-1)
 

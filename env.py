@@ -49,47 +49,97 @@ class FailedProofSubgoal(FailedProof):
     def __str__(self):
         return f"Failed to prove: {self.subgoal}"
 
-def model_display_mines(mines, model):
-    dummy = FailedProofDisjoint(model, None, None, None)
-    print(dummy.seq_str(mines))
+class AnnotatedFact:
+    def __init__(self, prop, initial = False, assumed = False, deconstruction = False):
+        self.initial = initial
+        self.assumed = assumed
+        self.prop = prop
+        self.deconstruction = deconstruction
 
 class LogicContext:
-    def __init__(self, env, facts, assumed_ids):
-        self.env = env
+    def __init__(self, facts, var_to_value):
         self.facts = list(facts)
-        self.assumed_ids = list(assumed_ids)
+        self.var_to_value = dict(var_to_value)
+
+    @property
+    def raw_facts(self):
+        return [fact.prop for fact in self.facts]
 
     def clone(self):
-        return LogicContext(self.env, self.facts, self.assumed_ids)
-    def add_fact(self, fact, assumed = False):
-        if assumed: self.assumed_ids.append(len(self.facts))
-        assert isinstance(fact, TermBool)
-        self.facts.append(fact)
+        return LogicContext(self.facts, self.var_to_value)
+
+    def add_var(self, v):
+        assert v.is_fixed_var
+        assert v not in self.var_to_value
+        self.var_to_value[v] = None
+
+    def add_fact(self, prop, assumed = False, deconstruction = False):
+        assert isinstance(prop, TermBool)
+        for v in prop.all_vars:
+            if v.is_fixed_var and v not in self.var_to_value:
+                cur_vars = list(self.var_to_value.keys())
+                raise Exception(f"Variable {v} in {prop} not covered by current variables: {cur_vars}")
+        self.facts.append(AnnotatedFact(prop, assumed = assumed, deconstruction = deconstruction))
+
+    def deconstruct(self, v, value):
+        assert v.is_fixed_var
+        assert v in self.var_to_value
+        assert self.var_to_value[v] is None
+        self.var_to_value[v] = value
+        for value_v in value.all_vars:
+            assert value_v.is_fixed_var
+            assert value_v not in self.var_to_value
+            self.var_to_value[value_v] = None
+        self.add_fact(equals(v, value), deconstruction = True)
 
     def show_assumed(self):
         print("Assumptions:")
-        for idx in self.assumed_ids:
-            print('*', self.facts[idx])
+        for fact in self.facts:
+            if fact.assumed:
+                print('*', fact.prop)
     def show_all(self):
         print("Facts:")
-        assumed_set = set(self.assumed_ids)
-        for idx, fact in enumerate(self.facts):
-            if idx in assumed_set: bullet = '*'
+        for fact in self.facts:
+            if fact.assumed: bullet = '*'
             else: bullet = '.'
-            print(bullet, fact)
+            print(bullet, fact.prop)
     def show_last_assump(self, bullet = ' *'):
-        if not self.assumed_ids: return
-        n = len(self.assumed_ids)
-        idx = self.assumed_ids[n-1]
-        print('  '*n + bullet + ' '+ str(self.facts[idx]))
+        n = -1
+        last = None
+        for fact in self.facts:
+            if fact.assumed:
+                n += 1
+                last = fact
+        if last is not None:
+            print('  '*n + bullet + ' '+ str(fact.prop))
+
     def remove_facts(self, removed):
-        removed = set(removed)
-        facts = list(filter(lambda fact: fact not in removed, self.facts))
-        new_to_ori = [idx for idx,fact in enumerate(self.facts) if fact not in removed]
-        ori_to_new = {ori:new for new,ori in enumerate(new_to_ori)}
-        assumed_ids = [ori_to_new[idx] for idx in self.assumed_ids if idx in ori_to_new]
-        self.facts = facts
-        self.assumed_ids = assumed_ids
+        self.facts = list(filter(lambda fact: fact not in removed, self.facts))
+
+    def remove_var(self, removed):
+        assert removed in self.var_to_value and self.var_to_value[removed] is None
+        for v, value in self.var_to_value.items():
+            if value is not None and removed in value.all_vars:
+                # TODO: allow removing multiple variables at once
+                assert len(value.all_vars) == 1
+                self.var_to_value[v] = None
+        self.facts = list(filter(lambda fact: removed not in fact.prop.all_vars, self.facts))
+
+    @staticmethod
+    def from_props(props, ini_vars):
+        ini_vars_s = ini_vars
+        for prop in props:
+            for v in prop.all_vars:
+                if v.is_fixed_var and v not in ini_vars_s:
+                    raise Exception(f"Variable {v} in {prop} not covered by initial variables: {ini_vars}")
+        return LogicContext(
+            [AnnotatedFact(prop, initial = True) for prop in props],
+            { v : None for v in ini_vars }
+        )
+
+def model_display_mines(mines, model):
+    dummy = FailedProofDisjoint(model, None, None, None)
+    print(dummy.seq_str(mines))
 
 class GrasshopperEnv:
     def __init__(self, auto_assume = False, record_uflia = False, show_record_step = False):
@@ -103,7 +153,10 @@ class GrasshopperEnv:
             equals(self.mines.length, self.size),
             self.jumps.number > self.mines.count,
         ]
-        self.ctx = LogicContext(self, univ_theorems + ctx_theorems, [])
+        self.ctx = LogicContext.from_props(
+            univ_theorems + ctx_theorems,
+            [self.size, self.jumps, self.mines],
+        )
         self.ctx_stack = []
         self.proven = False
         self.prover_kwargs = {
@@ -115,7 +168,7 @@ class GrasshopperEnv:
     def prove(self, goal):
         remains_to_check = []
         try:
-            prover.prove_contradiction(self.ctx.facts + [~goal], **self.prover_kwargs)
+            prover.prove_contradiction(self.ctx.raw_facts + [~goal], **self.prover_kwargs)
         except FailedProof as e:
             if goal.f == conjunction:
                 remains_to_check = goal.args
@@ -152,18 +205,18 @@ class GrasshopperEnv:
         remaining_cases = []
         try:
             prover.prove_contradiction(
-                self.ctx.facts + [landings_boom, mines_boom],
+                self.ctx.raw_facts + [landings_boom, mines_boom],
                 **self.prover_kwargs,
             )
         except FailedProof as e:
-            _, subst = prover.extract_subst(self.ctx.facts)
+            _, subst = prover.extract_subst(self.ctx.raw_facts)
             landings_boom = subst[landings_boom]
             mines_boom = subst[mines_boom]
             for landings_boom_case in landings_boom.disj_args:
                 for mines_boom_case in mines_boom.disj_args:
                     try:
                         prover.prove_contradiction(
-                            self.ctx.facts + [landings_boom_case, mines_boom_case]
+                            self.ctx.raw_facts + [landings_boom_case, mines_boom_case]
                         )
                     except:
                         boom_case = simplify_exist_clause(
@@ -197,7 +250,7 @@ class GrasshopperEnv:
     def order_jumps(self, jumps):
         assert isinstance(jumps, JumpSet) and jumps.is_var
         jumpso = Jumps.fixed_var(jumps.var_name + 'o')
-        self.ctx.add_fact(equals(jumps, jumpso.s))
+        self.ctx.deconstruct(jumps, jumpso.s)
         return jumpso
 
     def pop_max_jump(self, jumps):
@@ -205,7 +258,7 @@ class GrasshopperEnv:
         self.prove(jumps.number > 0)
         J = Jump.fixed_var(jumps.var_name+'_max')
         jumpsr = JumpSet.fixed_var(jumps.var_name+'r')
-        self.ctx.add_fact(equals(jumps, JumpSet.merge(J, jumpsr)))
+        self.ctx.deconstruct(jumps, JumpSet.merge(J, jumpsr))
         self.ctx.add_fact(~jumpsr.contains(Jump.X) | (Jump.X.length <= J.length))
         return J, jumpsr
 
@@ -215,7 +268,7 @@ class GrasshopperEnv:
         self.prove(jumps.number > mines.count)
         J = Jump.fixed_var(jumps.var_name+'_avoid')
         jumpsr = JumpSet.fixed_var(jumps.var_name+'r')
-        self.ctx.add_fact(equals(jumps, JumpSet.merge(J, jumpsr)))
+        self.ctx.deconstruct(jumps, JumpSet.merge(J, jumpsr))
         self.ctx.add_fact(~mines[J.length-1])
         return J, jumpsr
 
@@ -224,7 +277,7 @@ class GrasshopperEnv:
         self.prove(jumps.number > 0)
         J = Jump.fixed_var(jumps.var_name+'0')
         jumpsr = Jumps.fixed_var(jumps.var_name+'r')
-        self.ctx.add_fact(equals(jumps, Jumps.concat(J, jumpsr)))
+        self.ctx.deconstruct(jumps, Jumps.concat(J, jumpsr))
         return J, jumpsr
 
     def split_mines(self, mines, i):
@@ -233,7 +286,7 @@ class GrasshopperEnv:
         self.prove((i >= 0) & (i <= mines.length))
         mines0 = MineField.fixed_var(mines.var_name+'0')
         mines1 = MineField.fixed_var(mines.var_name+'1')
-        self.ctx.add_fact(equals(mines, mines0 + mines1))
+        self.ctx.deconstruct(mines, mines0 + mines1)
         self.ctx.add_fact(equals(mines0.length, i))
         return mines0, mines1
 
@@ -249,7 +302,7 @@ class GrasshopperEnv:
         self.prove(conjunction(*requirements))
 
         jumps_ih = Jumps.fixed_var('jumps_ih')
-        self.ctx.add_fact(equals(jumps, jumps_ih.s))
+        self.ctx.deconstruct(jumps, jumps_ih.s)
         self.ctx.add_fact(
             ~jumps_ih.landings[TermInt.X] |
             ~mines[TermInt.X]
@@ -262,7 +315,7 @@ class GrasshopperEnv:
         
         mines0 = MineField.fixed_var(mines.var_name+'0')
         mines1 = MineField.fixed_var(mines.var_name+'1')
-        self.ctx.add_fact(equals(mines, MineField(mines0, True, mines1)))
+        self.ctx.deconstruct(mines, MineField(mines0, True, mines1))
         self.ctx.add_fact(equals(mines0.count, 0))
         return mines0, mines1
 
@@ -272,7 +325,7 @@ class GrasshopperEnv:
         jumps0 = Jumps.fixed_var(jumps.var_name+'0')
         jumps1 = Jumps.fixed_var(jumps.var_name+'1')
         J = Jump.fixed_var(jumps.var_name+'_mid')
-        self.ctx.add_fact(equals(jumps, Jumps.concat(jumps0, J, jumps1)))
+        self.ctx.deconstruct(jumps, Jumps.concat(jumps0, J, jumps1))
         self.ctx.add_fact(jumps0.length <= i)
         self.ctx.add_fact(jumps0.length+J.length > i)
         return jumps0, J, jumps1
@@ -281,6 +334,7 @@ class GrasshopperEnv:
         assert isinstance(mines1, MineField) and isinstance(mines2, MineField)
         # self.prove(equals(mines1.length, mines2.length))
         mines = MineField.fixed_var('mines_un')
+        self.ctx.add_var(mines)
         self.ctx.add_fact(~mines1[TermInt.X] | mines[TermInt.X])
         self.ctx.add_fact(~mines2[TermInt.X] | mines[TermInt.X])
         self.ctx.add_fact(~(mines1.length >= mines2.length) | equals(mines.length, mines1.length))
