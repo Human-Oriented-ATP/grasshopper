@@ -57,16 +57,17 @@ class AnnotatedFact:
         self.deconstruction = deconstruction
 
 class LogicContext:
-    def __init__(self, facts, var_to_value):
+    def __init__(self, facts, var_to_value, model_constraints):
         self.facts = list(facts)
         self.var_to_value = dict(var_to_value)
+        self.model_constraints = list(model_constraints)
 
     @property
     def raw_facts(self):
         return [fact.prop for fact in self.facts]
 
     def clone(self):
-        return LogicContext(self.facts, self.var_to_value)
+        return LogicContext(self.facts, self.var_to_value, self.model_constraints)
 
     def add_var(self, v):
         assert v.is_fixed_var
@@ -134,8 +135,12 @@ class LogicContext:
                     raise Exception(f"Variable {v} in {prop} not covered by initial variables: {ini_vars}")
         return LogicContext(
             [AnnotatedFact(prop, initial = True) for prop in props],
-            { v : None for v in ini_vars }
+            { v : None for v in ini_vars },
+            [],
         )
+
+    def get_model(self):
+        TODO
 
 def model_display_mines(mines, model):
     dummy = FailedProofDisjoint(model, None, None, None)

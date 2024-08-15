@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from env import GrasshopperEnv
 from solution_basic import solution as solution_basic
 from solution_a3m2 import solution as solution_a3m2

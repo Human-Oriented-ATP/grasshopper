@@ -39,10 +39,10 @@ if config.to_smt:
         constraints,
         substitute = config.substitute,
         max_inst_iters = max_inst_iters,
+        congruence = config.congruence,
     )
     lia.write_smt(
         sys.stdout,
-        require_congruence = config.congruence,
     )
 else:
     try:

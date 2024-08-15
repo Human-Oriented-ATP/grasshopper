@@ -63,6 +63,16 @@ class LiaChecker:
         self.unsat_core_ids = None
         self.sat_model = None
 
+    def clone(self): # only constraints & terms, not cloning solver's outcome
+        res = LiaChecker()
+        res.int_vars = list(self.int_vars)
+        res.int_vars_d = dict(self.int_vars_d)
+        res.bool_vars = list(self.bool_vars)
+        res.bool_vars_d = dict(self.bool_vars_d)
+        res.constraints = list(self.constraints)
+        res.constraints_s = set(self.constraints_s)
+        return res
+
     def add_term(self, term):
         for subterm in term.subterms_iter():
             if isinstance(subterm, TermInt) and subterm.f != TermInt._mk:
@@ -128,6 +138,9 @@ class LiaChecker:
                 )) | equals(term, term2)
             instances.append((term, arg_list))
 
+    def add_congruence_theorems(self):
+        self.constraints.extend(self.get_congruence_theorems())
+
     ########  Conversion to SMT
 
     @staticmethod
@@ -164,7 +177,7 @@ class LiaChecker:
         else:
             raise Exception(f"Cannot convert to SMT: {term}")
 
-    def write_smt(self, stream, require_congruence):
+    def write_smt(self, stream):
         header = """(set-option :produce-unsat-cores true)
 (set-option :produce-models true)
 (set-logic LIA)
@@ -178,19 +191,15 @@ class LiaChecker:
         stream.write("\n; constraints\n")
         for i,constraint in enumerate(self.constraints):
             stream.write(f"(assert (! {self._prop_to_smt(constraint)} :named constraint-{i}))\n")
-        if require_congruence:
-            stream.write("\n; congruence theorems\n")
-            for constraint in self.get_congruence_theorems():
-                stream.write(f"(assert {self._prop_to_smt(constraint)})\n")
         stream.write("(check-sat)\n")
 
     ########  Running a solver
 
-    def solve(self, cmd = ('cvc4', '-m', '--lang', 'smt'), require_congruence = True):
+    def solve(self, cmd = ('cvc4', '-m', '--lang', 'smt')):
         popen = Popen(cmd, stdin = PIPE, stdout = PIPE, bufsize=1,
                       universal_newlines=True)
-        self.write_smt(popen.stdin, require_congruence = require_congruence)
-        # self.write_smt(sys.stdout, require_congruence = require_congruence)
+        self.write_smt(popen.stdin)
+        # self.write_smt(sys.stdout)
 
         response = popen.stdout.readline()
         if response.strip() == "sat":

@@ -110,7 +110,7 @@ def add_instances(lia, quantified, max_inst_iters):
 # (4) in a few iterations, adds extra instances of clauses with free variables
 #     that match the ground constraints
 
-def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1):
+def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1, congruence = True):
 
     if debug:
         print("\nConstraints:\n")
@@ -150,7 +150,10 @@ def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1):
 
     # add instances of quantified constraints
     add_instances(lia, quantified, max_inst_iters)
-    
+
+    if congruence:
+        lia.add_congruence_theorems()
+
     if debug:
         print()
 
@@ -158,11 +161,11 @@ def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1):
 
 last_problem_index = -1
 
-def prove_contradiction(constraints, congruence = True, record_uflia = False, show_step = False, **kwargs):
+def prove_contradiction(constraints, record_uflia = False, show_step = False, **kwargs):
     global last_problem_index
     lia = constraints_to_lia(constraints, **kwargs)
 
-    lia.solve(require_congruence = congruence)
+    lia.solve()
 
     if not lia.unsatisfiable:
         if lia.satisfiable:
@@ -178,6 +181,9 @@ def prove_contradiction(constraints, congruence = True, record_uflia = False, sh
     if record_uflia:
         hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
         record_grasshopper_task(self.facts, hammer_fname)
+
+def get_model(hard_constraints, optional_constraints, important_terms, **kwargs):
+    TODO
 
 def get_univ_theorems():
     univ_theorems = [
