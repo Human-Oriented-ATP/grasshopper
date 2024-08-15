@@ -110,7 +110,7 @@ def add_instances(lia, quantified, max_inst_iters):
 # (4) in a few iterations, adds extra instances of clauses with free variables
 #     that match the ground constraints
 
-def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1, congruence = True):
+def constraints_to_lia(constraints, extra_terms = (), substitute = True, max_inst_iters = 1, congruence = True):
 
     if debug:
         print("\nConstraints:\n")
@@ -139,6 +139,8 @@ def constraints_to_lia(constraints, substitute = True, max_inst_iters = 1, congr
     lia = LiaChecker()
     for constraint in ground:
         lia.add_constraint(constraint)
+    for term in extra_terms:
+        lia.add_term(term)
 
     if debug:
         print("\nSubstituted, quantified:\n")
@@ -182,8 +184,24 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, **
         hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
         record_grasshopper_task(self.facts, hammer_fname)
 
-def get_model(hard_constraints, optional_constraints, important_terms, **kwargs):
-    TODO
+# the list optional_constraints gets reduced to a satisfiable beginning
+def get_model(hard_constraints, optional_constraints, **kwargs):
+
+    hard_constraints, subst = extract_subst(hard_constraints)
+    optional_constraints_ori = list(optional_constraints)
+    lia_base = constraints_to_lia(hard_constraints, substitute = False, **kwargs)
+
+    while True:
+        lia = lia_base.clone()
+        for constraint in optional_constraints:
+            lia.add_constraint(subst[constraint])
+        lia.solve()
+        if lia.satisfiable and lia.sat_model is not None:
+            return lia.sat_model
+        if not optional_constraints: # contradictory / no model found
+            optional_constraints.extend(optional_constraints_ori) # revert to the previous state
+            return None
+        optional_constraints.pop()
 
 def get_univ_theorems():
     univ_theorems = [

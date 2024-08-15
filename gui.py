@@ -35,25 +35,28 @@ class Splittable(GObject):
         return res
 
 class GJumps(Splittable):
-    def __init__(self, env, model, jumps, layer = 0):
+    def __init__(self, gui, jumps, layer = 0):
         self.layer = layer
 
-        self.env = env
-        self.model = model
+        self.gui = gui
+        self.env = self.gui.env
         self.jumps = jumps
         assert isinstance(jumps, (Jumps, JumpSet))
-        
+        self.model_updated()
+        super().__init__()
+
+    def model_updated(self):
         if isinstance(self.jumps, Jumps):
             parts = self.jumps.subsequences
         else:
-            parts = [jumps]
+            parts = [self.jumps]
 
         self.numbers = [
-            model[part.number].value()
+            self.env.ctx.model[part.number].value()
             for part in parts
         ]
         self.lengths = [
-            model[part.length].value()
+            self.env.ctx.model[part.length].value()
             for part in parts
         ]
         self.length = sum(self.lengths)
@@ -67,13 +70,12 @@ class GJumps(Splittable):
         self.labels = [] # numerical labels
         for l,n,split in zip(self.lengths, self.numbers, [0] + self.splits):
             if n > 1:
-                label = GText(str(n), layer)
+                label = GText(str(n), self.layer)
                 label.scale(0.7 / label.bounding_box.height)
                 label.move_center_to(split + l/2, 0.5)
                 self.labels.append(label)
 
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
-        super().__init__()
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
@@ -107,16 +109,6 @@ class GJumps(Splittable):
             cr.fill()
             label.draw(cr, layer)
 
-    def _make_var(self, name, value):
-        if len(value) == 1:
-            v = Jump.shared_var(name)
-            self.model[v] = Jump(value[0])
-            return Jumps([v])
-        else:
-            v = Jumps.shared_var(name)
-            self.model[v] = Jumps(value)
-            return v
-
     def split_raw(self, n):
         if isinstance(self.jumps, JumpSet): return None
         if n not in self.splits: return None
@@ -128,31 +120,39 @@ class GJumps(Splittable):
         print('Left:', jumps0)
         print('Right:', jumps1)
         print()
-        return GJumps(self.env, self.model, jumps0), GJumps(self.env, self.model, jumps1)
+        return GJumps(self.gui, jumps0), GJumps(self.gui, jumps1)
 
     def join_raw(self, other):
         if isinstance(self.jumps, JumpSet): return None
         if isinstance(other.jumps, JumpSet): return None
         print('Left:', self.jumps)
         print('Right:', other.jumps)
-        res = GJumps(self.env, self.model, self.jumps + other.jumps)
+        res = GJumps(self.gui, self.jumps + other.jumps)
         print('Join:', res.jumps)
         print()
         return res
 
 class GMines(Splittable):
-    def __init__(self, env, model, mines, layer = 0):
+    def __init__(self, gui, mines, layer = 0):
         self.layer = layer
 
-        self.env = env
-        self.model = model
+        self.gui = gui
+        self.env = gui.env
         self.mines = mines
-        self.mines_val = model[mines].value()
+        self.model_updated()
+        super().__init__()
 
-        self.length = model[mines.length].value()
+    def model_updated(self):
+        self.length = self.env.ctx.model[self.mines.length].value()
+
+        self.mines_val = []
+        for part in self.mines.parts:
+            length = self.env.ctx.model[part.length].value()
+            count = self.env.ctx.model[part.count].value()
+            self.mines_val.extend([True]*count)
+            self.mines_val.extend([False]*(length-count))
 
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
-        super().__init__()
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
@@ -160,7 +160,7 @@ class GMines(Splittable):
         hl_splits = set()
         last = 0
         for part in self.mines.subsequences:
-            last += self.model[part.length].value()
+            last += self.env.ctx.model[part.length].value()
             hl_splits.add(last)
 
         for i in range(1,self.length):
@@ -188,22 +188,12 @@ class GMines(Splittable):
                 cr.arc(index, -0.5, 0.2, 0, 2*math.pi)
                 cr.fill()
 
-    def _make_var(self, name, value):
-        if len(value) == 1:
-            v = TermBool.shared_var(name)
-            self.model[v] = TermBool(value[0])
-            return MineField(v)
-        else:
-            v = MineField.shared_var(name)
-            self.model[v] = MineField(value)
-            return v
-
     def split_raw(self, n):
         if not (1 <= n < self.length): return None
         index = 0
         split1 = 0
         for part in self.mines.subsequences:
-            split2 = split1 + self.model[part.length].value()
+            split2 = split1 + self.env.ctx.model[part.length].value()
             if n < split2: break
             index += 1
             split1 = split2
@@ -216,13 +206,9 @@ class GMines(Splittable):
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
-            part_val = self.model[part].value()
             local_split = n-split1
-            part0_val = part_val[:local_split]
-            part1_val = part_val[local_split:]
             part0, part1 = self.env.split_mines(part, TermInt(local_split))
-            self.model[part0] = MineField(part0_val)
-            self.model[part1] = MineField(part1_val)
+            self.gui.model_updated()
             mines0 = self.mines.parts[:index] + (part0,)
             mines1 = (part1,) + self.mines.parts[index+1:]
             mines0 = MineField.concat(*mines0)
@@ -231,12 +217,12 @@ class GMines(Splittable):
         print('Left:', mines0)
         print('Right:', mines1)
         print()
-        return GMines(self.env, self.model, mines0), GMines(self.env, self.model, mines1)
+        return GMines(self.gui, mines0), GMines(self.gui, mines1)
 
     def join_raw(self, other):
         print('Left:', self.mines)
         print('Right:', other.mines)
-        res = GMines(self.env, self.model, self.mines + other.mines)
+        res = GMines(self.gui, self.mines + other.mines)
         print('Join:', res.mines)
         return res
 
@@ -248,10 +234,10 @@ class GrasshopperGui(Gtk.Window):
         self.env = GrasshopperEnv(auto_assume = True)
         jumps = self.env.jumps
         mines = self.env.mines
-        self.model = Model({
-            jumps : JumpSet([1,2,4]),
-            mines : MineField([0,0,1,0,1,0]),
-        })
+        self.env.ctx.add_model_constraints(
+            equals(jumps.length, 7),
+            equals(mines.count, 2),
+        )
 
         self.obj_grasp = None
         self.mb_grasp = None
@@ -288,8 +274,8 @@ class GrasshopperGui(Gtk.Window):
         self.shift = (0,0)
 
         self.objects = [
-            GJumps(self.env, self.model, jumps),
-            GMines(self.env, self.model, mines),
+            GJumps(self, jumps),
+            GMines(self, mines),
         ]
         self.objects[0].translate(-1,0)
 
@@ -533,17 +519,13 @@ class GrasshopperGui(Gtk.Window):
         self.darea.queue_draw()
 
     def pop_max(self, jumps):
-        val = self.model[jumps.jumps].value()
-        J_val = max(val)
-        rest_val = set(val)
-        rest_val.remove(J_val)
         J, rest = self.env.pop_max_jump(jumps.jumps)
-        self.model[J] = Jump(J_val)
-        self.model[rest] = JumpSet(rest_val)
-        J_gr = GJumps(self.env, self.model, Jumps(J))
+        self.model_updated()
+        J_gr = GJumps(self, Jumps(J))
         J_gr.translate(*jumps.center)
-        rest_gr = GJumps(self.env, self.model, rest)
+        rest_gr = GJumps(self, rest)
         rest_gr.translate(*jumps.center)
+        J_val = self.env.ctx.model[J.length].value()
         rest_gr.translate(J_val, 0)
         return J_gr, rest_gr
 
@@ -563,15 +545,16 @@ class GrasshopperGui(Gtk.Window):
         self.add_object(jumpso)
         self.darea.queue_draw()
 
+    def model_updated(self):
+        for obj in self.objects:
+            obj.model_updated()
+
     def induction(self, jumps, mines):
         assert jumps.center[0]+1 == mines.center[0]
         assert jumps.length == mines.length+1
         jumpso = self.env.induction(jumps.jumps, mines.mines)
-        val = self.model[jumps.jumps].value()
-        jumpso_val = list(val)
-        random.shuffle(jumpso_val)
-        self.model[jumpso] = Jumps(jumpso_val)
-        jumpso_gr = GJumps(self.env, self.model, jumpso)
+        self.model_updated()
+        jumpso_gr = GJumps(self, jumpso)
         jumpso_gr.translate(*jumps.center)
         return jumpso_gr
 

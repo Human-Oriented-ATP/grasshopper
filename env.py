@@ -57,22 +57,24 @@ class AnnotatedFact:
         self.deconstruction = deconstruction
 
 class LogicContext:
-    def __init__(self, facts, var_to_value, model_constraints):
+    def __init__(self, facts, var_to_value, model_constraints, cached_model):
         self.facts = list(facts)
         self.var_to_value = dict(var_to_value)
         self.model_constraints = list(model_constraints)
+        self._model = cached_model
 
     @property
     def raw_facts(self):
         return [fact.prop for fact in self.facts]
 
     def clone(self):
-        return LogicContext(self.facts, self.var_to_value, self.model_constraints)
+        return LogicContext(self.facts, self.var_to_value, self.model_constraints, self._model)
 
     def add_var(self, v):
         assert v.is_fixed_var
         assert v not in self.var_to_value
         self.var_to_value[v] = None
+        self._model = None
 
     def add_fact(self, prop, assumed = False, deconstruction = False):
         assert isinstance(prop, TermBool)
@@ -81,6 +83,14 @@ class LogicContext:
                 cur_vars = list(self.var_to_value.keys())
                 raise Exception(f"Variable {v} in {prop} not covered by current variables: {cur_vars}")
         self.facts.append(AnnotatedFact(prop, assumed = assumed, deconstruction = deconstruction))
+        self._model = None
+
+    def add_model_constraints(self, *props, prioritized = True):
+        assert all(isinstance(prop, TermBool) for prop in props)
+        if prioritized:
+            self.model_constraints = list(props) + self.model_constraints
+        else:
+            self.model_constraints.extend(self.model_constraints)
 
     def deconstruct(self, v, value):
         assert v.is_fixed_var
@@ -116,6 +126,7 @@ class LogicContext:
 
     def remove_facts(self, removed):
         self.facts = list(filter(lambda fact: fact not in removed, self.facts))
+        self._model = None
 
     def remove_var(self, removed):
         assert removed in self.var_to_value and self.var_to_value[removed] is None
@@ -125,6 +136,41 @@ class LogicContext:
                 assert len(value.all_vars) == 1
                 self.var_to_value[v] = None
         self.facts = list(filter(lambda fact: removed not in fact.prop.all_vars, self.facts))
+        self._model = None
+
+    def get_model(self):
+        extra_terms = []
+        important_terms = []
+        for v, value in self.var_to_value.items():
+            if isinstance(v, Jump): cur_extra = [v.length]
+            elif isinstance(v, Jumps): cur_extra = [v.length, v.number]
+            elif isinstance(v, JumpSet): cur_extra = [v.length, v.number]
+            elif isinstance(v, MineField): cur_extra = [v.length, v.count]
+            else: cur_extra = []
+            extra_terms.extend(cur_extra)
+            if value is None: important_terms.extend(cur_extra)
+        model = prover.get_model(self.raw_facts, self.model_constraints, extra_terms = extra_terms)
+        if model is None: return None
+
+        # add model constraints to copy the found model
+        known_values = set()
+        for term in self.model_constraints:
+            if term.f != equals: continue
+            a,b = term.args
+            if not isinstance(a, TermInt): continue
+            if not b.is_num_const: continue
+            known_values.add(a)
+        for term in important_terms:
+            if term in known_values: continue
+            self.model_constraints.append(equals(term, model[term]))
+
+        return model
+
+    @property
+    def model(self):
+        if self._model is None:
+            self._model = self.get_model()
+        return self._model
 
     @staticmethod
     def from_props(props, ini_vars):
@@ -137,10 +183,8 @@ class LogicContext:
             [AnnotatedFact(prop, initial = True) for prop in props],
             { v : None for v in ini_vars },
             [],
+            None,
         )
-
-    def get_model(self):
-        TODO
 
 def model_display_mines(mines, model):
     dummy = FailedProofDisjoint(model, None, None, None)
