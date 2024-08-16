@@ -132,13 +132,13 @@ class BoundingBox:
 class GObject:
     def __init__(self):
         self.parent = None
-        self.center = (0,0)
+        self.coor = (0,0)
         self.scale_coef = 1
     @property
     def bounding_box(self):
-        return self.raw_bounding_box.scale(self.scale_coef).translate(*self.center)
+        return self.raw_bounding_box.scale(self.scale_coef).translate(*self.coor)
     def translate(self, x,y):
-        self.center = (self.center[0]+x, self.center[1]+y)
+        self.coor = (self.coor[0]+x, self.coor[1]+y)
     def scale(self, scale_coef):
         self.scale_coef *= scale_coef
     def fit_to(self, bounding_box):
@@ -146,10 +146,10 @@ class GObject:
             bounding_box.width / self.raw_bounding_box.width,
             bounding_box.height / self.raw_bounding_box.height,
         )
-        self.move_to(*bounding_box.center)
+        self.move_to(*bounding_box.coor)
     def move_center_to(self, x2,y2):
         x1,y1 = self.raw_bounding_box.center
-        self.center = (x2-x1*self.scale_coef, y2-y1*self.scale_coef)
+        self.coor = (x2-x1*self.scale_coef, y2-y1*self.scale_coef)
 
     def parent_with_type(self, t):
         res = self.parent
@@ -168,8 +168,8 @@ class GObject:
             scale *= obj.scale_coef
             x *= obj.scale_coef
             y *= obj.scale_coef
-            x += obj.center[0]
-            y += obj.center[1]
+            x += obj.coor[0]
+            y += obj.coor[1]
             obj = obj.parent
         return (x,y), scale
     def parent_coor(self, coor, parent = None):
@@ -186,7 +186,7 @@ class GObject:
 
     def draw(self, cr, layer):
         cr.save()
-        cr.translate(*self.center)
+        cr.translate(*self.coor)
         cr.scale(self.scale_coef, self.scale_coef)
         self.draw_raw(cr, layer)
         cr.restore()

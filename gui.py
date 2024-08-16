@@ -16,34 +16,54 @@ def remove_prefix(text, prefix):
     return text
 
 class Splittable(GObject):
+    def __init__(self, gui, coor_base):
+        super().__init__()
+        self.gui = gui
+        self.env = self.gui.env
+        self.coor_base = coor_base
+        x,y = coor_base
+        self.coor_start = self.env.ctx.model[x].value(), self.env.ctx.model[y].value()
+        self.coor = self.coor_start
+
+    @property
+    def coor_abstract(self):
+        x_start, y_start = self.coor_start
+        x,y = self.coor
+        x_base, y_base = self.coor_base
+        return (
+            x_base + TermInt(x - x_start),
+            y_base + TermInt(y - y_start),
+        )
+
+    def model_updated(self):
+        x,y = self.coor_abstract
+        print(x, y)
+        x = self.env.ctx.model[x]
+        y = self.env.ctx.model[y]
+        self.coor = x.value(), y.value()
 
     def split(self, n):
         AB = self.split_raw(n)
         if AB is None: return None
         A,B = AB
-        A.center = self.center
-        B.center = (self.center[0]+n, self.center[1])
         return A,B
     def join(self, other):
         if other == self: return None
         if not isinstance(other, type(self)): return None
-        if other.center[1] != self.center[1]: return None
-        if other.center[0] != self.center[0] + self.length: return None
+        if other.coor[1] != self.coor[1]: return None
+        if other.coor[0] != self.coor[0] + self.length: return None
         res = self.join_raw(other)
-        if res is not None:
-            res.center = self.center
         return res
 
 class GJumps(Splittable):
-    def __init__(self, gui, jumps, layer = 0):
+    def __init__(self, gui, coor, jumps, layer = 0):
         self.layer = layer
 
-        self.gui = gui
-        self.env = self.gui.env
         self.jumps = jumps
         assert isinstance(jumps, (Jumps, JumpSet))
+
+        super().__init__(gui, coor)
         self.model_updated()
-        super().__init__()
 
     def model_updated(self):
         if isinstance(self.jumps, Jumps):
@@ -76,6 +96,7 @@ class GJumps(Splittable):
                 self.labels.append(label)
 
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
+        Splittable.model_updated(self)
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
@@ -120,27 +141,30 @@ class GJumps(Splittable):
         print('Left:', jumps0)
         print('Right:', jumps1)
         print()
-        return GJumps(self.gui, jumps0), GJumps(self.gui, jumps1)
+        x,y = self.coor_abstract
+        return (
+            GJumps(self.gui, (x,y), jumps0),
+            GJumps(self.gui, (x+jumps0.length,y), jumps1),
+        )
 
     def join_raw(self, other):
         if isinstance(self.jumps, JumpSet): return None
         if isinstance(other.jumps, JumpSet): return None
         print('Left:', self.jumps)
         print('Right:', other.jumps)
-        res = GJumps(self.gui, self.jumps + other.jumps)
+        res = GJumps(self.gui, self.coor_abstract, self.jumps + other.jumps)
         print('Join:', res.jumps)
         print()
         return res
 
 class GMines(Splittable):
-    def __init__(self, gui, mines, layer = 0):
+    def __init__(self, gui, coor, mines, layer = 0):
         self.layer = layer
 
-        self.gui = gui
-        self.env = gui.env
         self.mines = mines
+
+        super().__init__(gui, coor)
         self.model_updated()
-        super().__init__()
 
     def model_updated(self):
         self.length = self.env.ctx.model[self.mines.length].value()
@@ -153,6 +177,7 @@ class GMines(Splittable):
             self.mines_val.extend([False]*(length-count))
 
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
+        Splittable.model_updated(self)
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
@@ -217,12 +242,13 @@ class GMines(Splittable):
         print('Left:', mines0)
         print('Right:', mines1)
         print()
-        return GMines(self.gui, mines0), GMines(self.gui, mines1)
+        x,y = self.coor_abstract
+        return GMines(self.gui, (x,y), mines0), GMines(self.gui, (x+mines0.length,y), mines1)
 
     def join_raw(self, other):
         print('Left:', self.mines)
         print('Right:', other.mines)
-        res = GMines(self.gui, self.mines + other.mines)
+        res = GMines(self.gui, self.coor_abstract, self.mines + other.mines)
         print('Join:', res.mines)
         return res
 
@@ -274,10 +300,9 @@ class GrasshopperGui(Gtk.Window):
         self.shift = (0,0)
 
         self.objects = [
-            GJumps(self, jumps),
-            GMines(self, mines),
+            GJumps(self, (TermInt(-1),TermInt(0)), jumps),
+            GMines(self, (TermInt(0),TermInt(0)), mines),
         ]
-        self.objects[0].translate(-1,0)
 
     def update_win_size(self):
         self.win_size = (self.darea.get_allocated_width(), self.darea.get_allocated_height())
@@ -337,7 +362,7 @@ class GrasshopperGui(Gtk.Window):
     def grasp_objects(self, objs, x,y):
         self.obj_grasp = []
         for obj in objs:
-            cx,cy = obj.center
+            cx,cy = obj.coor
             self.obj_grasp.append((obj, x-cx, y-cy))
 
     def start_selection(self, x,y, keep = False):
@@ -408,7 +433,7 @@ class GrasshopperGui(Gtk.Window):
             select_box = BoundingBox.from_corners(*self.select_grasp)
             selection = set()
             for obj in self.objects:
-                if select_box.contains(*obj.center):
+                if select_box.contains(*obj.coor):
                     selection.add(obj)
             self.select_grasp = None
             if e.state & Gdk.ModifierType.SHIFT_MASK:
@@ -444,7 +469,7 @@ class GrasshopperGui(Gtk.Window):
             if self.obj_grasp is None: return
             for obj, gx, gy in self.obj_grasp:
                 x,y = self.pixel_to_coor((e.x, e.y))
-                obj.center = (math.floor(x-gx+0.5), math.floor(y-gy+0.5))
+                obj.coor = (math.floor(x-gx+0.5), math.floor(y-gy+0.5))
             self.darea.queue_draw()
 
     def on_key_press(self,w,e):
@@ -521,12 +546,9 @@ class GrasshopperGui(Gtk.Window):
     def pop_max(self, jumps):
         J, rest = self.env.pop_max_jump(jumps.jumps)
         self.model_updated()
-        J_gr = GJumps(self, Jumps(J))
-        J_gr.translate(*jumps.center)
-        rest_gr = GJumps(self, rest)
-        rest_gr.translate(*jumps.center)
-        J_val = self.env.ctx.model[J.length].value()
-        rest_gr.translate(J_val, 0)
+        J_gr = GJumps(self, jumps.coor_abstract, Jumps(J))
+        x,y = jumps.coor_abstract
+        rest_gr = GJumps(self, (x+J.length, y), rest)
         return J_gr, rest_gr
 
     def induction_selected(self):
@@ -550,12 +572,11 @@ class GrasshopperGui(Gtk.Window):
             obj.model_updated()
 
     def induction(self, jumps, mines):
-        assert jumps.center[0]+1 == mines.center[0]
+        assert jumps.coor[0]+1 == mines.coor[0]
         assert jumps.length == mines.length+1
         jumpso = self.env.induction(jumps.jumps, mines.mines)
         self.model_updated()
-        jumpso_gr = GJumps(self, jumpso)
-        jumpso_gr.translate(*jumps.center)
+        jumpso_gr = GJumps(self, jumpso.coor_abstract, jumpso)
         return jumpso_gr
 
 if __name__ == "__main__":
