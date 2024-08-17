@@ -37,10 +37,10 @@ class Splittable(GObject):
 
     def model_updated(self):
         x,y = self.coor_abstract
-        print(x, y)
         x = self.env.ctx.model[x]
         y = self.env.ctx.model[y]
         self.coor = x.value(), y.value()
+        self.coor_start = self.coor
 
     def split(self, n):
         AB = self.split_raw(n)
