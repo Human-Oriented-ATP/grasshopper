@@ -576,7 +576,7 @@ class GrasshopperGui(Gtk.Window):
         assert jumps.length == mines.length+1
         jumpso = self.env.induction(jumps.jumps, mines.mines)
         self.model_updated()
-        jumpso_gr = GJumps(self, jumpso.coor_abstract, jumpso)
+        jumpso_gr = GJumps(self, jumps.coor_abstract, jumpso)
         return jumpso_gr
 
 if __name__ == "__main__":
