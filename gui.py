@@ -7,6 +7,7 @@ from gi.repository import Gtk, Gdk, GLib
 import cairo
 from logic import *
 from env import GrasshopperEnv
+from prover import FailedProof
 
 from graphics import *
 
@@ -36,11 +37,19 @@ class Splittable(GObject):
         )
 
     def model_updated(self):
-        x,y = self.coor_abstract
-        x = self.env.ctx.model[x]
-        y = self.env.ctx.model[y]
-        self.coor = x.value(), y.value()
-        self.coor_start = self.coor
+        x_start, y_start = self.coor_start
+        x,y = self.coor
+        x_base, y_base = self.coor_base
+        x_start2 = self.env.ctx.model[x_base].value()
+        y_start2 = self.env.ctx.model[y_base].value()
+        self.coor = (
+            x - x_start + x_start2,
+            y - y_start + y_start2,
+        )
+        self.coor_start = (
+            x_start2,
+            y_start2,
+        )
 
     def split(self, n):
         AB = self.split_raw(n)
@@ -97,6 +106,9 @@ class GJumps(Splittable):
 
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
         Splittable.model_updated(self)
+
+    def clone(self):
+        return GJumps(self.gui, self.coor_abstract, self.jumps, self.layer)
 
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
@@ -179,6 +191,9 @@ class GMines(Splittable):
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
         Splittable.model_updated(self)
 
+    def clone(self):
+        return GMines(self.gui, self.coor_abstract, self.mines, self.layer)
+
     def draw_raw(self, cr, layer):
         if layer != self.layer: return
 
@@ -233,7 +248,6 @@ class GMines(Splittable):
             assert part.is_var
             local_split = n-split1
             part0, part1 = self.env.split_mines(part, TermInt(local_split))
-            self.gui.model_updated()
             mines0 = self.mines.parts[:index] + (part0,)
             mines1 = (part1,) + self.mines.parts[index+1:]
             mines0 = MineField.concat(*mines0)
@@ -243,6 +257,8 @@ class GMines(Splittable):
         print('Right:', mines1)
         print()
         x,y = self.coor_abstract
+        self.gui.save_side_goals()
+        self.gui.model_updated()
         return GMines(self.gui, (x,y), mines0), GMines(self.gui, (x+mines0.length,y), mines1)
 
     def join_raw(self, other):
@@ -303,6 +319,7 @@ class GrasshopperGui(Gtk.Window):
             GJumps(self, (TermInt(-1),TermInt(0)), jumps),
             GMines(self, (TermInt(0),TermInt(0)), mines),
         ]
+        self.ctx_to_objects = dict()
 
     def update_win_size(self):
         self.win_size = (self.darea.get_allocated_width(), self.darea.get_allocated_height())
@@ -484,6 +501,23 @@ class GrasshopperGui(Gtk.Window):
             self.pop_max_selected()
         elif keyval_name == 'i':
             self.induction_selected()
+        elif keyval_name == 's':
+            self.solve_with_jumps_selected()
+
+        # debug commands
+        elif keyval_name == 'u':
+            self.model_updated()
+            print("model updated")
+        elif keyval_name == 'p':
+            for obj in self.objects:
+                print(type(obj))
+                print('coor', obj.coor)
+                print('coor_start:', obj.coor_start)
+                print('coor_base:', obj.coor_base)
+                print('coor_abstract:', obj.coor_abstract)
+                print()
+            for v,value in self.env.ctx.model.base_dict.items():
+                print(f"{v} -> {value}")
         # elif keyval_name == "Right":
         #     self.inf_index = min(self.inf_index+1, len(self.ginferences)-1)
         #     self.darea.queue_draw()
@@ -528,6 +562,17 @@ class GrasshopperGui(Gtk.Window):
 
         cr.restore()
 
+    def save_side_goals(self):
+        for ctx in reversed(self.env.ctx_stack):
+            if ctx in self.ctx_to_objects: break
+            self.ctx_to_objects[ctx] = [
+                obj.clone()
+                for obj in self.objects
+            ]
+    def restore_side_goal(self):
+        if self.env.ctx in self.ctx_to_objects:
+            self.objects = self.ctx_to_objects[self.env.ctx]
+
     def pop_max_selected(self):
         if len(self.selection) != 1: return
         [jumps] = self.selection
@@ -545,10 +590,11 @@ class GrasshopperGui(Gtk.Window):
 
     def pop_max(self, jumps):
         J, rest = self.env.pop_max_jump(jumps.jumps)
-        self.model_updated()
         J_gr = GJumps(self, jumps.coor_abstract, Jumps(J))
         x,y = jumps.coor_abstract
         rest_gr = GJumps(self, (x+J.length, y), rest)
+        self.save_side_goals()
+        self.model_updated()
         return J_gr, rest_gr
 
     def induction_selected(self):
@@ -575,9 +621,26 @@ class GrasshopperGui(Gtk.Window):
         assert jumps.coor[0]+1 == mines.coor[0]
         assert jumps.length == mines.length+1
         jumpso = self.env.induction(jumps.jumps, mines.mines)
-        self.model_updated()
         jumpso_gr = GJumps(self, jumps.coor_abstract, jumpso)
+        self.save_side_goals()
+        self.model_updated()
         return jumpso_gr
+
+    def solve_with_jumps_selected(self):
+        if len(self.selection) != 1: return
+        [jumps] = self.selection
+        if not isinstance(jumps, GJumps): return
+        if not isinstance(jumps.jumps, Jumps): return
+        self.solve_with_jumps(jumps)
+
+    def solve_with_jumps(self, jumps):
+        try:
+            self.env.solve_with_jumps(jumps.jumps)
+            self.save_side_goals()
+        except FailedProof:
+            return
+        self.restore_side_goal()
+        self.model_updated()
 
 if __name__ == "__main__":
 

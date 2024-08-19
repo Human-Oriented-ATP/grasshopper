@@ -185,11 +185,17 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, **
         record_grasshopper_task(self.facts, hammer_fname)
 
 # the list optional_constraints gets reduced to a satisfiable beginning
-def get_model(hard_constraints, optional_constraints, **kwargs):
+def get_model(hard_constraints, optional_constraints, extra_terms = (), **kwargs):
 
     hard_constraints, subst = extract_subst(hard_constraints)
     optional_constraints_ori = list(optional_constraints)
-    lia_base = constraints_to_lia(hard_constraints, substitute = False, **kwargs)
+
+    lia_base = constraints_to_lia(
+        hard_constraints,
+        substitute = False,
+        extra_terms = [subst[term] for term in extra_terms],
+        **kwargs,
+    )
 
     while True:
         lia = lia_base.clone()
@@ -197,11 +203,21 @@ def get_model(hard_constraints, optional_constraints, **kwargs):
             lia.add_constraint(subst[constraint])
         lia.solve()
         if lia.satisfiable and lia.sat_model is not None:
-            return lia.sat_model
+            model = lia.sat_model
+            break
         if not optional_constraints: # contradictory / no model found
             optional_constraints.extend(optional_constraints_ori) # revert to the previous state
             return None
         optional_constraints.pop()
+
+    if extra_terms:
+        enriched_dict = dict(model.base_dict)
+        for term in extra_terms:
+            if term not in enriched_dict:
+                enriched_dict[term] = model[subst[term]]
+        model = Substitution(enriched_dict)
+
+    return model
 
 def get_univ_theorems():
     univ_theorems = [
