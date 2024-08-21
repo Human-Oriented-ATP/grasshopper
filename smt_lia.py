@@ -195,7 +195,7 @@ class LiaChecker:
 
     ########  Running a solver
 
-    def solve(self, cmd = ('z3', '-in', '-smt2')):
+    def solve(self, cmd = ('cvc4', '-m', '--lang', 'smt')):
         popen = Popen(cmd, stdin = PIPE, stdout = PIPE, bufsize=1,
                       universal_newlines=True)
         self.write_smt(popen.stdin)
