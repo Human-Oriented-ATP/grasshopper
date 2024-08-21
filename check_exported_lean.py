@@ -1,4 +1,4 @@
-#!/usr/bin/python3.11
+#!/usr/bin/python3
 
 from parser import parse_problem_stream
 from prover import prove_contradiction, constraints_to_lia, get_univ_theorems, FailedProof
