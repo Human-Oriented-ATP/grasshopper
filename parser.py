@@ -44,6 +44,7 @@ class Parser:
                 raise Exception(f"Cannot build cons out of {x} of type {type(x)}")
         self.name_to_fun = {
             '↑' : (lambda x : x), # ignore coersion
+            'Nat.cast': (lambda x : x), # ignore coersion
             'HAppend.hAppend' : lambda a,b: a.concat(a,b),
             'Multiset.sizeOf' : JumpSet.number.fget,
             'Multiset.Nodup'  : JumpSet.nodup.fget,
