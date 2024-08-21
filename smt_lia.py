@@ -195,7 +195,9 @@ class LiaChecker:
 
     ########  Running a solver
 
-    def solve(self, cmd = ('cvc4', '-m', '--lang', 'smt')):
+    # cmd = ('z3', '-in', '-smt2')
+    # cmd = ('cvc4', '-m', '--lang', 'smt')
+    def solve(self, cmd = ('z3', '-in', '-smt2')):
         popen = Popen(cmd, stdin = PIPE, stdout = PIPE, bufsize=1,
                       universal_newlines=True)
         self.write_smt(popen.stdin)
@@ -206,15 +208,17 @@ class LiaChecker:
             self.satisfiable = True
             model_str,_ = popen.communicate("(get-model)\n")
             model_lisp = lisp_parse_lines(model_str.split('\n'))
-            assert model_lisp[0] == 'model'
+            if model_lisp[0] == 'model':
+                model_lisp.pop(0)
             model = {}
 
             var_name_to_var = dict()
             for v,name in self.bool_vars_d.items(): var_name_to_var[name] = v
             for v,name in self.int_vars_d.items(): var_name_to_var[name] = v
 
-            for (define_fun, var_name, empty, t, value) in model_lisp[1:]:
+            for (define_fun, var_name, empty, t, value) in model_lisp:
                 assert define_fun == 'define-fun'
+                if var_name.startswith('constraint-'): continue
                 v = var_name_to_var[var_name]
                 assert empty == []
                 if isinstance(v, TermInt):
