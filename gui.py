@@ -8,6 +8,7 @@ import cairo
 from logic import *
 from env import GrasshopperEnv
 from prover import FailedProof
+import itertools
 
 from graphics import *
 
@@ -17,7 +18,7 @@ def remove_prefix(text, prefix):
     return text
 
 class Splittable(GObject):
-    def __init__(self, gui, coor_base):
+    def __init__(self, gui, coor_base, length_abstract, x_offset = 0):
         super().__init__()
         self.gui = gui
         self.env = self.gui.env
@@ -25,6 +26,9 @@ class Splittable(GObject):
         x,y = coor_base
         self.coor_start = self.env.ctx.model[x].value(), self.env.ctx.model[y].value()
         self.coor = self.coor_start
+        self.length_abstract = length_abstract
+        self.length = self.env.ctx.model[x].value()
+        self.x_offset = x_offset
 
     @property
     def coor_abstract(self):
@@ -50,6 +54,7 @@ class Splittable(GObject):
             x_start2,
             y_start2,
         )
+        self.length = self.env.ctx.model[self.length_abstract].value()
 
     def split(self, n):
         AB = self.split_raw(n)
@@ -64,6 +69,20 @@ class Splittable(GObject):
         res = self.join_raw(other)
         return res
 
+    def point_interpretations(self, x, y):
+        ax0,ay = self.coor_abstract
+        for ax in (ax0, ax0+self.length_abstract):
+            vx = self.env.ctx.model[ax].value()
+            vy = self.env.ctx.model[ay].value()
+            x_dist = abs(vx + self.x_offset - x)
+            y_dist = abs(vy - y)
+            precedence = (x_dist, y_dist)
+            interpretation = (
+                ax + TermInt(- vx + math.floor(x)),
+                ay + TermInt(- vy + math.floor(y)),
+            )
+            yield precedence, interpretation
+
 class GJumps(Splittable):
     def __init__(self, gui, coor, jumps, layer = 0):
         self.layer = layer
@@ -71,10 +90,11 @@ class GJumps(Splittable):
         self.jumps = jumps
         assert isinstance(jumps, (Jumps, JumpSet))
 
-        super().__init__(gui, coor)
+        super().__init__(gui, coor, jumps.length)
         self.model_updated()
 
     def model_updated(self):
+        Splittable.model_updated(self)
         if isinstance(self.jumps, Jumps):
             parts = self.jumps.subsequences
         else:
@@ -88,7 +108,6 @@ class GJumps(Splittable):
             self.env.ctx.model[part.length].value()
             for part in parts
         ]
-        self.length = sum(self.lengths)
 
         self.splits = [] # cumsum of lengths
         split = 0
@@ -105,7 +124,6 @@ class GJumps(Splittable):
                 self.labels.append(label)
 
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
-        Splittable.model_updated(self)
 
     def clone(self):
         return GJumps(self.gui, self.coor_abstract, self.jumps, self.layer)
@@ -175,11 +193,11 @@ class GMines(Splittable):
 
         self.mines = mines
 
-        super().__init__(gui, coor)
+        super().__init__(gui, coor, mines.length, x_offset = -0.5)
         self.model_updated()
 
     def model_updated(self):
-        self.length = self.env.ctx.model[self.mines.length].value()
+        Splittable.model_updated(self)
 
         self.mines_val = []
         for part in self.mines.parts:
@@ -189,7 +207,6 @@ class GMines(Splittable):
             self.mines_val.extend([False]*(length-count))
 
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
-        Splittable.model_updated(self)
 
     def clone(self):
         return GMines(self.gui, self.coor_abstract, self.mines, self.layer)
@@ -238,6 +255,8 @@ class GMines(Splittable):
             index += 1
             split1 = split2
 
+        x,y = self.coor_abstract
+        vx,vy = self.coor
         assert split1 < split2
         if n == split1:
             mines0 = MineField.concat(*self.mines.parts[:index])
@@ -246,8 +265,10 @@ class GMines(Splittable):
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
-            local_split = n-split1
-            part0, part1 = self.env.split_mines(part, TermInt(local_split))
+            x2,_ = self.gui.point_interpretation(vx+n-0.5, vy)
+            x2 = x2+1
+            local_split = x2-split1
+            part0, part1 = self.env.split_mines(part, local_split)
             mines0 = self.mines.parts[:index] + (part0,)
             mines1 = (part1,) + self.mines.parts[index+1:]
             mines0 = MineField.concat(*mines0)
@@ -256,7 +277,6 @@ class GMines(Splittable):
         print('Left:', mines0)
         print('Right:', mines1)
         print()
-        x,y = self.coor_abstract
         self.gui.save_side_goals()
         self.gui.model_updated()
         return GMines(self.gui, (x,y), mines0), GMines(self.gui, (x+mines0.length,y), mines1)
@@ -494,7 +514,6 @@ class GrasshopperGui(Gtk.Window):
         keyval_name = Gdk.keyval_name(keyval)
         # do not distinguish standard and numlock key variants
         keyval_name = remove_prefix(keyval_name, "KP_")
-        # print("Press:", keyval_name)
         if keyval_name == "Escape":
             Gtk.main_quit()
         elif keyval_name == 'm':
@@ -503,6 +522,18 @@ class GrasshopperGui(Gtk.Window):
             self.induction_selected()
         elif keyval_name == 's':
             self.solve_with_jumps_selected()
+        elif keyval_name == 'S': # Sorry
+            self.env._next_goal()
+            self.restore_side_goal()
+            self.model_updated()
+        elif keyval_name == 'minus':
+            self.change_length_selected(-1)
+        elif keyval_name == 'equal':
+            self.change_length_selected(1)
+        elif keyval_name == 'underscore':
+            self.change_count_selected(-1)
+        elif keyval_name == 'plus':
+            self.change_count_selected(1)
 
         # debug commands
         elif keyval_name == 'u':
@@ -518,9 +549,7 @@ class GrasshopperGui(Gtk.Window):
                 print()
             for v,value in self.env.ctx.model.base_dict.items():
                 print(f"{v} -> {value}")
-        # elif keyval_name == "Right":
-        #     self.inf_index = min(self.inf_index+1, len(self.ginferences)-1)
-        #     self.darea.queue_draw()
+        # else: print("Press:", keyval_name)
 
     def on_key_release(self,w,e):
         keyval_name = Gdk.keyval_name(e.keyval)
@@ -573,6 +602,25 @@ class GrasshopperGui(Gtk.Window):
         if self.env.ctx in self.ctx_to_objects:
             self.objects = self.ctx_to_objects[self.env.ctx]
 
+    def point_interpretation(self, x, y, skip = ()):
+        if skip:
+            objects = [
+                obj for obj in self.objects
+                if obj not in skip
+            ]
+        else:
+            objects = self.objects
+        if not objects:
+            return TermInt(math.floor(x)), TermInt(math.floor(y))
+        _, res = min(
+            itertools.chain.from_iterable(
+                obj.point_interpretations(x,y)
+                for obj in objects
+            ),
+            key = lambda x: x[0]
+        )
+        return res
+
     def pop_max_selected(self):
         if len(self.selection) != 1: return
         [jumps] = self.selection
@@ -616,6 +664,7 @@ class GrasshopperGui(Gtk.Window):
     def model_updated(self):
         for obj in self.objects:
             obj.model_updated()
+        self.darea.queue_draw()
 
     def induction(self, jumps, mines):
         assert jumps.coor[0]+1 == mines.coor[0]
@@ -640,6 +689,27 @@ class GrasshopperGui(Gtk.Window):
         except FailedProof:
             return
         self.restore_side_goal()
+        self.model_updated()
+
+    def change_length_selected(self, change):
+        if len(self.selection) != 1: return
+        [obj] = self.selection
+        if isinstance(obj, GJumps):
+            self.change_number(obj.jumps.length, change)
+        elif isinstance(obj, GMines):
+            self.change_number(obj.mines.length, change)
+
+    def change_count_selected(self, change):
+        if len(self.selection) != 1: return
+        [obj] = self.selection
+        if isinstance(obj, GJumps):
+            self.change_number(obj.jumps.number, change)
+        elif isinstance(obj, GMines):
+            self.change_number(obj.mines.count, change)
+
+    def change_number(self, number, change):
+        value = self.env.ctx.model[number]
+        self.env.ctx.add_model_constraints(equals(number, value+TermInt(change)))
         self.model_updated()
 
 if __name__ == "__main__":
