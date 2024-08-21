@@ -75,33 +75,33 @@ def delabAppImplicitCore (unexpand : Bool) (numArgs : Nat) (delabHead : Delab) (
 
   let stx := Syntax.mkUncurriedApp fnStx (args.filterMap (TSyntax.mk <$> ·.syntax?))
 
-  -- Structure instance notation
-  if ← pure (unexpand && args.all (·.canUnexpand)) <&&> getPPOption getPPStructureInstances then
-    -- Try using the structure instance unexpander.
-    if let some stx ← (some <$> unexpandStructureInstance stx) <|> pure none then
-      return stx
+  -- -- Structure instance notation
+  -- if ← pure (unexpand && args.all (·.canUnexpand)) <&&> getPPOption getPPStructureInstances then
+  --   -- Try using the structure instance unexpander.
+  --   if let some stx ← (some <$> unexpandStructureInstance stx) <|> pure none then
+  --     return stx
 
-  -- Field notation
-  if let some (fieldIdx, field) := field? then
-    if fieldIdx < args.size then
-      let obj? : Option Term ← do
-        let arg := args[fieldIdx]!
-        if let .regular s := arg then
-          withNaryArg fieldIdx <| some <$> stripParentProjections s
-        else
-          pure none
-      if let some obj := obj? then
-        let isFirst := args[0:fieldIdx].all (· matches .skip)
-        -- Clear the `obj` argument from `args`.
-        let args' := args.set! fieldIdx .skip
-        let mut head : Term ← `($obj.$(mkIdent field))
-        if isFirst then
-          -- If the object is the first argument (after some implicit arguments),
-          -- we can annotate `obj.field` with the prefix of the application
-          -- that includes all the implicit arguments immediately before and after `obj`.
-          let objArity := args'.findIdx? (fun a => !(a matches .skip)) |>.getD args'.size
-          head ← withBoundedAppFn (numArgs - objArity) <| annotateTermInfo <| head
-        return Syntax.mkUncurriedApp head (args'.filterMap (TSyntax.mk <$> ·.syntax?)) -- the syntax here is uncurried application instead of the usual curried syntax
+  -- -- Field notation
+  -- if let some (fieldIdx, field) := field? then
+  --   if fieldIdx < args.size then
+  --     let obj? : Option Term ← do
+  --       let arg := args[fieldIdx]!
+  --       if let .regular s := arg then
+  --         withNaryArg fieldIdx <| some <$> stripParentProjections s
+  --       else
+  --         pure none
+  --     if let some obj := obj? then
+  --       let isFirst := args[0:fieldIdx].all (· matches .skip)
+  --       -- Clear the `obj` argument from `args`.
+  --       let args' := args.set! fieldIdx .skip
+  --       let mut head : Term ← `($obj.$(mkIdent field))
+  --       if isFirst then
+  --         -- If the object is the first argument (after some implicit arguments),
+  --         -- we can annotate `obj.field` with the prefix of the application
+  --         -- that includes all the implicit arguments immediately before and after `obj`.
+  --         let objArity := args'.findIdx? (fun a => !(a matches .skip)) |>.getD args'.size
+  --         head ← withBoundedAppFn (numArgs - objArity) <| annotateTermInfo <| head
+  --       return Syntax.mkUncurriedApp head (args'.filterMap (TSyntax.mk <$> ·.syntax?)) -- the syntax here is uncurried application instead of the usual curried syntax
 
   -- Normal application
   return stx
