@@ -91,6 +91,7 @@ class LogicContext:
             self.model_constraints = list(props) + self.model_constraints
         else:
             self.model_constraints.extend(self.model_constraints)
+        self._model = None
 
     def deconstruct(self, v, value):
         assert v.is_fixed_var
@@ -287,6 +288,9 @@ class GrasshopperEnv:
         for boom_case in remaining_cases:
             self.split_case(~boom_case, automatic = True)
 
+        self._next_goal()
+
+    def _next_goal(self):
         if self.ctx_stack:
             self.ctx = self.ctx_stack.pop()
             self.ctx.show_last_assump()

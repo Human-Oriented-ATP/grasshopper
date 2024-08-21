@@ -197,27 +197,44 @@ def get_model(hard_constraints, optional_constraints, extra_terms = (), **kwargs
         **kwargs,
     )
 
-    while True:
+    def finish_model(model):
+        if extra_terms:
+            enriched_dict = dict(model.base_dict)
+            for term in extra_terms:
+                if term not in enriched_dict:
+                    enriched_dict[term] = model[subst[term]]
+            model = Substitution(enriched_dict)
+        return model        
+
+    def try_constraints():
         lia = lia_base.clone()
         for constraint in optional_constraints:
             lia.add_constraint(subst[constraint])
         lia.solve()
         if lia.satisfiable and lia.sat_model is not None:
-            model = lia.sat_model
-            break
-        if not optional_constraints: # contradictory / no model found
-            optional_constraints.extend(optional_constraints_ori) # revert to the previous state
+            return lia.sat_model
+        else:
             return None
-        optional_constraints.pop()
 
-    if extra_terms:
-        enriched_dict = dict(model.base_dict)
-        for term in extra_terms:
-            if term not in enriched_dict:
-                enriched_dict[term] = model[subst[term]]
-        model = Substitution(enriched_dict)
+    model = try_constraints()
+    if model is not None:
+        return finish_model(model)
 
-    return model
+    del optional_constraints[:]
+    model = try_constraints()
+    if model is None: # there is no model even without optional constraints
+        optional_constraints.extend(optional_constraints_ori)
+        return None
+
+    for constraint in optional_constraints_ori:
+        optional_constraints.append(constraint)
+        model2 = try_constraints()
+        if model2 is None:
+            optional_constraints.pop()
+        else:
+            model = model2
+
+    return finish_model(model)
 
 def get_univ_theorems():
     univ_theorems = [
