@@ -50,7 +50,7 @@ def Expr.render (e : Expr) : MetaM String :=
     |>.insert `pp.proofs.withType false
     |>.insert `pp.sanitizeNames false
   withOptions (options.mergeBy fun _ opt _ ↦ opt) <| do
-    return toString (← ppExpr e)
+    return toString (← ppExpr e) |>.splitOn (sep := "\n") |> String.join
 
 partial def Expr.exportTheorem : Q(Prop) → TacticM String
   | ~q($P ∧ $Q) => return s!"AND({← exportTheorem P}, {← exportTheorem Q})"
@@ -105,7 +105,7 @@ elab stx:"auto" : tactic => do
       throwError s!"Invalid file path to Python script."
     let child ← IO.Process.spawn {
       cmd := "./check_exported_lean.py",
-      args := #[],
+      args := #["--add_thms", "--substitute", "--instantiate", "--congruence"],
       stdin := .piped,
       stdout := .piped,
       stderr := .piped
@@ -124,7 +124,6 @@ elab stx:"auto" : tactic => do
     evalTactic <| ← `(tactic| sorry)
     -- if False then
     --   IO.FS.writeFile fileName output
-
 
 end Auto
 
