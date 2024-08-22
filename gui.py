@@ -266,7 +266,7 @@ class GMines(Splittable):
             assert isinstance(part, MineField)
             assert part.is_var
             x2,_ = self.gui.point_interpretation(vx+n-0.5, vy)
-            x2 = x2+1
+            x2 = x2+(1-vx)
             local_split = x2-split1
             part0, part1 = self.env.split_mines(part, local_split)
             mines0 = self.mines.parts[:index] + (part0,)
