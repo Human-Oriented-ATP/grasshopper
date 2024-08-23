@@ -5,6 +5,9 @@ from uflia_hammer import record_grasshopper_task
 
 debug = False
 
+class ProvenTrivially:
+    pass
+
 class FailedProof(Exception):
     def __init__(self, model):
         self.model = model
@@ -126,7 +129,8 @@ def constraints_to_lia(constraints, extra_terms = (), substitute = True, max_ins
         print("\nSubstitution:\n")
         for x,value in subst.base_dict.items(): print(f"{x} -> {value}")
 
-    if TermBool.false in constraints: return True
+    if TermBool.false in constraints:
+        return ProvenTrivially()
 
     if debug:
         print("\nSubstituted, all:\n")
@@ -167,6 +171,7 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, **
     global last_problem_index
     lia = constraints_to_lia(constraints, **kwargs)
 
+    if isinstance(lia, ProvenTrivially): return
     lia.solve()
 
     if not lia.unsatisfiable:

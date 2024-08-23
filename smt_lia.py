@@ -208,7 +208,7 @@ class LiaChecker:
             self.satisfiable = True
             model_str,_ = popen.communicate("(get-model)\n")
             model_lisp = lisp_parse_lines(model_str.split('\n'))
-            if model_lisp[0] == 'model':
+            if model_lisp and model_lisp[0] == 'model':
                 model_lisp.pop(0)
             model = {}
 
