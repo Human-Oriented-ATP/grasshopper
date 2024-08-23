@@ -127,9 +127,37 @@ elab stx:"auto" : tactic => do
 
 end Auto
 
-#eval show IO Bool from do
-  let ans ← System.FilePath.pathExists ("." / "check_exported_lean.py")
-  return ans
+section CaseSplitting
+
+open Lean Elab Meta Parser Term Tactic
+
+def caseSplitOn (mvarId : MVarId) : TacticM Unit := withMainContext do
+  if ← liftM <| isProp =<< mvarId.getType' then do
+    let prop ← liftM <| PrettyPrinter.delab =<< mvarId.getType'
+    evalTactic =<< `(tactic| by_cases $prop)
+  else
+    throwError "Goal is not a proposition."
+
+def Lean.MVarId.isSolvable? (mvarId : MVarId) : TacticM Bool := withoutModifyingState do
+  setGoals [mvarId]
+  evalTactic =<< `(tactic| auto)
+  return (← getUnsolvedGoals).isEmpty
+
+elab "extract" pat:rcasesPatMed ":=" value:term : tactic => withMainContext do
+  let constrThm ← inferType <| ← Term.elabTerm value none
+  let (mvars, _, _) ← forallMetaTelescope constrThm
+  for mvar in mvars do
+    let mvarId := mvar.mvarId!
+    if ← mvarId.isSolvable? then
+      continue
+    else
+      logInfo m!"Splitting on {mvarId}..."
+      caseSplitOn mvarId
+  let valueWithAuto ← mvars.foldlM (init := value) fun stx _ ↦
+    `(term| $stx (by auto))
+  evalTactic =<< `(tactic| obtain $pat := $valueWithAuto)
+
+end CaseSplitting
 
 section Theorems
 
