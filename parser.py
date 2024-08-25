@@ -170,8 +170,7 @@ def parse_problem_stream(f):
         v = v.strip()
         t = t.strip()
         if v in var_to_type:
-            basename = fname.split('/')[-1]
-            print(f"{basename}: Double variable '{v}'")
+            print(f"Double variable '{v}'")
         var_to_type[v] = t
     constraints = []
     with parser.context_fixed_vars(var_to_type):
