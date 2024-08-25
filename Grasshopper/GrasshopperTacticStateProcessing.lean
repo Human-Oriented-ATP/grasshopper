@@ -49,6 +49,7 @@ def Expr.render (e : Expr) : MetaM String :=
     |>.insert `pp.analyze.typeAscriptions true
     |>.insert `pp.proofs.withType false
     |>.insert `pp.sanitizeNames false
+    |>.insert `pp.uncurriedApp true
   withOptions (options.mergeBy fun _ opt _ ↦ opt) <| do
     return toString (← ppExpr e) |>.splitOn (sep := "\n") |> String.join
 
@@ -131,16 +132,17 @@ section CaseSplitting
 
 open Lean Elab Meta Parser Term Tactic
 
-def caseSplitOn (mvarId : MVarId) : TacticM Unit := withMainContext do
-  if ← liftM <| isProp =<< mvarId.getType' then do
-    let prop ← liftM <| PrettyPrinter.delab =<< mvarId.getType'
-    evalTactic =<< `(tactic| by_cases $prop)
+def caseSplitOn (mvarId : MVarId) : TacticM Unit := do
+  let type ← mvarId.getType
+  if ← liftM <| isProp type then do
+    let prop ← liftM <| PrettyPrinter.delab type
+    evalTactic =<< `(tactic| by_cases hypothesis:$prop)
   else
     throwError "Goal is not a proposition."
 
 def Lean.MVarId.isSolvable? (mvarId : MVarId) : TacticM Bool := withoutModifyingState do
   setGoals [mvarId]
-  evalTactic =<< `(tactic| auto)
+  evalTactic =<< `(tactic| try auto)
   return (← getUnsolvedGoals).isEmpty
 
 elab "extract" pat:rcasesPatMed ":=" value:term : tactic => withMainContext do
@@ -151,7 +153,7 @@ elab "extract" pat:rcasesPatMed ":=" value:term : tactic => withMainContext do
     if ← mvarId.isSolvable? then
       continue
     else
-      logInfo m!"Splitting on {mvarId}..."
+      logWarning m!"Splitting on {mvarId}..."
       caseSplitOn mvarId
   let valueWithAuto ← mvars.foldlM (init := value) fun stx _ ↦
     `(term| $stx (by auto))
@@ -184,7 +186,7 @@ section Theorems
 
   theorem split_mines
     (mines : MineField) (i : ℤ)
-    (_ : i >= 0)
+    -- (_ : i >= 0)
     (_ : i <= mines.length)
   : ∃ (mines0 mines1 : MineField),
     mines = mines0 ++ mines1 ∧
@@ -245,64 +247,33 @@ example
   (∀ (x : ℤ), ¬jumpso.landings.getIndexD x ∨ ¬main_mines.getIndexD x)
 := by
   intros
-  by_cases main_mines.countMines = 0
-  -- mines are nonempty
-  · let ⟨jumpso, _⟩ := order_jumps main_jumps
-    use jumpso
-    clear grasshopper_ih
-    refine' ⟨_, _⟩
-    · auto
-    · intro x
-      auto
-  -- no mine on the first jump
-  · let ⟨J, jumps, _, _⟩ := pop_max_jump main_jumps (by auto)
-    let ⟨mines0, mines1, _, _⟩ := split_mines main_mines J.length (by auto) (by auto)
-    let ⟨mines00, mines01, _, _⟩ := split_mines mines0 (J.length-1) (by auto) (by auto)
-    by_cases ¬ mines01.getIndexD 0
-    · by_cases mines0.countMines ≠ 0
-      -- mine before the first jump
-      · let ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines1 (by auto) (by auto) (by auto) (by auto)
-        use (singleton J : Jumps) ++ jumpso
-        refine' ⟨_, _⟩
-        · auto
-        · intro x
-          auto
-      -- no mine before the first jump
-      · let ⟨mines10, mines11, _, _⟩ := split_first_mine mines1 (by auto)
-        let ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines10 ++ singleton false ++ mines11) (by auto) (by auto) (by auto) (by auto)
-        by_cases ¬ jumpso.landings.getIndexD mines10.length
-        -- no landing at the removed mine
-        · use singleton J ++ jumpso
-          refine' ⟨_, _⟩
-          · auto
-          · intro x
-            auto
-        -- landing at the removed mine
-        · let ⟨jumps0, J2, jumps1, _, _⟩ := split_jump_landings jumpso (mines10.length+1) (by auto) (by auto)
+  extract ⟨J, jumps, _, _⟩ := pop_max_jump main_jumps
+  extract ⟨mines0, mines1, _, _⟩ := split_mines main_mines J.length
+  · by_cases ¬(mines0.getIndexD (J.length - 1 : ℤ))
+    · extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines1
+      · use (singleton J : Jumps) ++ jumpso
+        refine' ⟨_, fun _ ↦ _⟩ <;> auto
+      · extract ⟨mines10, mines11, _, _⟩ := split_first_mine mines1
+        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines10 ++ singleton false ++ mines11)
+        by_cases ¬jumpso.landings.getIndexD mines10.length
+        · use (singleton J : Jumps) ++ jumpso
+          refine' ⟨_, fun _ ↦ _⟩ <;> auto
+        · extract ⟨jumps0, J2, jumps1, _, _⟩ := split_jump_landings jumpso (mines10.length+1) (by auto) (by auto)
           use jumps0 ++ singleton J2 ++ singleton J ++ jumps1
-          refine' ⟨_, _⟩
-          · auto
-          · intro x
-            auto
-    -- mine on the first jump
-    · by_cases mines00.length <= mines1.length
-      -- the first segment is smaller than the rest
-      · let ⟨mines10, mines11, _, _⟩ := split_mines mines1 mines00.length (by auto) (by auto)
-        let ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00 mines10 (by auto)
-        let ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines_un ++ mines11) (by auto) (by auto) (by auto) (by auto)
-        let ⟨J2, jumpso', _⟩ := pop_first_jump jumpso (by auto)
+          refine' ⟨_, fun _ ↦ _⟩ <;> auto
+    · extract ⟨mines00, mines01, _, _⟩ := split_mines mines0 (J.length - 1)
+      extract ⟨mines10, mines11, _, _⟩ := split_mines mines1 mines00.length
+      · extract ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00 mines10
+        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines_un ++ mines11)
+        extract ⟨J2, jumpso', _⟩ := pop_first_jump jumpso
         use singleton J2 ++ singleton J ++ jumpso'
-        refine' ⟨_, _⟩
-        · auto
-        · intro x
-          auto
-      -- the first segment is bigger than the rest
-      · let ⟨mines00', _, _, _⟩ := split_mines mines00 mines1.length (by auto) (by auto)
-        let ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00' mines1 (by auto)
-        let ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines_un (by auto) (by auto) (by auto) (by auto)
-        let ⟨J2, jumpso', _⟩ := pop_first_jump jumpso (by auto)
+        refine' ⟨_, fun _ ↦ _⟩ <;> auto
+      · extract ⟨mines00', _, _, _⟩ := split_mines mines00 mines1.length
+        extract ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00' mines1
+        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines_un
+        extract ⟨J2, jumpso', _⟩ := pop_first_jump jumpso
         use singleton J2 ++ singleton J ++ jumpso'
-        refine' ⟨_, _⟩
-        · auto
-        · intro x
-          auto
+        refine' ⟨_, fun _ ↦ _⟩ <;> auto
+  · extract ⟨jumpso⟩ := order_jumps jumps
+    use singleton J ++ jumpso
+    refine' ⟨_, fun _ ↦ _⟩ <;> auto
