@@ -180,15 +180,23 @@ def delabAppCore (maxArgs : Nat) (delabHead : (insertExplicit : Bool) → Delab)
   let paramKinds ← getParamKinds fn args
   _root_.delabAppImplicitCore (unexpand := unexpand) args.size (delabHead' false) paramKinds
 
+register_option pp.uncurriedApp : Bool := {
+  defValue := false
+  descr := "If true, use uncurried function application syntax with parentheses and commas between arguments."
+}
+
 /--
 Default delaborator for applications.
 -/
 @[delab app]
 def delabApp : Delab := do
-  let delabAppFn (insertExplicit : Bool) : Delab := do
-    let stx ← if (← getExpr).consumeMData.isConst then withMDatasOptions delabConst else delab
-    if insertExplicit && !stx.raw.isOfKind ``Lean.Parser.Term.explicit then `(@$stx) else pure stx
-  _root_.delabAppCore (← getExpr).getAppNumArgs delabAppFn (unexpand := true)
+  if (← getBoolOption `pp.uncurriedApp) then
+    let delabAppFn (insertExplicit : Bool) : Delab := do
+      let stx ← if (← getExpr).consumeMData.isConst then withMDatasOptions delabConst else delab
+      if insertExplicit && !stx.raw.isOfKind ``Lean.Parser.Term.explicit then `(@$stx) else pure stx
+    _root_.delabAppCore (← getExpr).getAppNumArgs delabAppFn (unexpand := true)
+  else
+    failure
 
 end
 
