@@ -17,8 +17,8 @@ cmd_parser.add_argument('--instantiate',  default=False, action=argparse.Boolean
                         help = "Instantiate universally quantified constraints (default: ignore them)")
 cmd_parser.add_argument('--congruence',  default=False, action=argparse.BooleanOptionalAction,
                         help = "Add congruence rules to the SMT solver")
-cmd_parser.add_argument('--to_smt',  default=False, action=argparse.BooleanOptionalAction,
-                        help = "Outputs an smt-file rather than calling a solver")
+cmd_parser.add_argument('--solver',  default=None, type=str,
+                        help = "Solver to run: z3, cvc4, cvc5, or a full command. If not specified, print smt input")
 
 config = cmd_parser.parse_args()
 
@@ -34,7 +34,7 @@ if config.add_thms:
 if config.instantiate: max_inst_iters = 1
 else: max_inst_iters = 0
 
-if config.to_smt:
+if config.solver is None:
     lia = constraints_to_lia(
         constraints,
         substitute = config.substitute,
@@ -45,12 +45,16 @@ if config.to_smt:
         sys.stdout,
     )
 else:
+    if config.solver == 'z3': solver_cmd = ('z3', '-in', '-smt2')
+    elif config.solver in ('cvc4', 'cvc5'): solver_cmd = (config.solver, '-m', '--lang', 'smt')
+    else: solver_cmd = tuple(config.solver.split(' '))
     try:
         prove_contradiction(
             constraints,
             substitute = config.substitute,
             max_inst_iters = max_inst_iters,
             congruence = config.congruence,
+            solver_cmd = solver_cmd,
         )
         print("Proven")
     except FailedProof as e:

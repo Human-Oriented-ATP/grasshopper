@@ -4,6 +4,7 @@ from smt_lia import LiaChecker
 from uflia_hammer import record_grasshopper_task
 
 debug = False
+default_solver = ('cvc4', '-m', '--lang', 'smt')
 
 class ProvenTrivially:
     pass
@@ -167,12 +168,12 @@ def constraints_to_lia(constraints, extra_terms = (), substitute = True, max_ins
 
 last_problem_index = -1
 
-def prove_contradiction(constraints, record_uflia = False, show_step = False, **kwargs):
+def prove_contradiction(constraints, record_uflia = False, show_step = False, solver_cmd = default_solver, **kwargs):
     global last_problem_index
     lia = constraints_to_lia(constraints, **kwargs)
 
     if isinstance(lia, ProvenTrivially): return
-    lia.solve()
+    lia.solve(solver_cmd)
 
     if not lia.unsatisfiable:
         if lia.satisfiable:
@@ -190,7 +191,7 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, **
         record_grasshopper_task(self.facts, hammer_fname)
 
 # the list optional_constraints gets reduced to a satisfiable beginning
-def get_model(hard_constraints, optional_constraints, extra_terms = (), **kwargs):
+def get_model(hard_constraints, optional_constraints, extra_terms = (), solver_cmd = default_solver, **kwargs):
 
     hard_constraints, subst = extract_subst(hard_constraints)
     optional_constraints_ori = list(optional_constraints)
@@ -215,7 +216,7 @@ def get_model(hard_constraints, optional_constraints, extra_terms = (), **kwargs
         lia = lia_base.clone()
         for constraint in optional_constraints:
             lia.add_constraint(subst[constraint])
-        lia.solve()
+        lia.solve(solver_cmd)
         if lia.satisfiable and lia.sat_model is not None:
             return lia.sat_model
         else:
