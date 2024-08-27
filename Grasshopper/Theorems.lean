@@ -68,8 +68,38 @@ theorem Jump.pos (j : Jump) : j.length > 0 := by
   simp only [gt_iff_lt, Nat.cast_pos, PNat.pos]
 
 @[universal]
-theorem JumpSet.length_nonneg (jumps : JumpSet) : jumps.sizeOf ≥ 0 := by
+theorem JumpSet.sum_nonneg (jumps : JumpSet) : jumps.sum ≥ 0 := by
+  simp only [JumpSet.sum]
+  refine Multiset.sum_nonneg ?_
+  simp
+
+@[universal]
+theorem JumpSet.sizeOf_nonneg (jumps : JumpSet) : jumps.sizeOf ≥ 0 := by
   simp only [ge_iff_le, zero_le]
+
+@[universal]
+theorem JumpSet.sizeOf_le_sum (jumps : JumpSet) : jumps.sizeOf ≤ jumps.sum := by
+  simp only [JumpSet.sum]
+  -- TODO: PR to Mathlib
+  have Multiset.sizeOf_eq : ∀ {α} {s : Multiset α}, s.sizeOf = (s.map (fun _ ↦ (1 : Int))).sum := by
+    intros
+    simp
+    sorry
+  rw [Multiset.sizeOf_eq]
+  apply Multiset.sum_map_le_sum_map
+  intro i _
+  rw [← @Int.pos_iff_one_le]
+  exact Jump.pos i
+
+@[universal]
+theorem JumpSet.length_eq_zero (jumps : JumpSet) : jumps.sum = 0 → jumps.sizeOf = (0 : Int) := by
+  simp only [JumpSet.sum]
+  have Multiset.sizeOf_eq : ∀ {α} (s : Multiset α), s.sizeOf = (s.map (fun _ ↦ (1 : Int))).sum := by
+    intros
+    simp
+    sorry
+  rw [Multiset.sizeOf_eq jumps]
+  sorry
 
 @[universal]
 theorem MineField.length_nonneg (mineField : MineField) : mineField.length ≥ 0 := by
