@@ -1,33 +1,6 @@
-import Mathlib.Data.Finset.Basic
-import Mathlib.Data.Finset.Image
-import Init.Classical
-import Mathlib.Tactic
+import Grasshopper.Theorems
 import Grasshopper.UncurriedAppDelab
-
-abbrev Jump := PNat
-abbrev MineField := List Bool
-abbrev Jumps := List Jump
-abbrev JumpSet := Multiset Jump
-
-abbrev Jumps.length (jumps : Jumps) := List.length jumps
-abbrev MineField.length (mineField : MineField) := List.length mineField
-def Jump.length (j : Jump) : Int := j
-
-def List.getIndexD [Inhabited α] (l : List α) (idx : Int) : α :=
-  match idx with
-  | .ofNat n => l.getD n default
-  | .negSucc _ => default
-
-instance [Inhabited α] : GetElem (List α) Int α (fun _ _ => True) where
-  getElem l idx _ := List.getIndexD l idx
-
-def JumpSet.sum (jumps : JumpSet) : Int := (jumps.map Jump.length).sum
-def MineField.countMines (mines : MineField) : Int := mines.countP id
-
-def jumpOver (j : Jump) : MineField := List.replicate j.natPred false
-def Jumps.landings (jumps : Jumps) : MineField := jumps.bind (fun j => (jumpOver j).concat true)
-def Jumps.s (jumps : Jumps) : JumpSet := .ofList jumps
-def Jumps.sum (jumps : Jumps) : Int := jumps.s.sum
+import Qq
 
 section Auto
 
@@ -106,7 +79,7 @@ elab stx:"auto" : tactic => do
       throwError s!"Invalid file path to Python script."
     let child ← IO.Process.spawn {
       cmd := "./check_exported_lean.py",
-      args := #["--add_thms", "--substitute", "--instantiate", "--congruence"],
+      args := #["--add_thms", "--substitute", "--instantiate", "--congruence", "--solver", "z3"],
       stdin := .piped,
       stdout := .piped,
       stderr := .piped
@@ -160,120 +133,3 @@ elab "extract" pat:rcasesPatMed ":=" value:term : tactic => withMainContext do
   evalTactic =<< `(tactic| obtain $pat := $valueWithAuto)
 
 end CaseSplitting
-
-section Theorems
-
-  theorem order_jumps
-  : ∀ jumps : JumpSet,
-    ∃ jumpso : Jumps,
-    jumps = jumpso.s
-  := by sorry
-
-  theorem pop_max_jump
-    (jumps : JumpSet)
-    (_ : jumps.sizeOf > 0)
-  : ∃ (j : Jump) (jumpsr : JumpSet),
-    jumps = .cons j jumpsr ∧
-    (∀ x ∈ jumps, x.length <= j.length)
-  := by sorry
-
-  theorem pop_first_jump
-    (jumps : Jumps)
-    (_ : jumps.length > 0)
-  : ∃ (j : Jump) (jumpsr : Jumps),
-    jumps = .cons j jumpsr
-  := by sorry
-
-  theorem split_mines
-    (mines : MineField) (i : ℤ)
-    -- (_ : i >= 0)
-    (_ : i <= mines.length)
-  : ∃ (mines0 mines1 : MineField),
-    mines = mines0 ++ mines1 ∧
-    mines0.length = i
-  := by sorry
-
-  theorem split_first_mine
-    (mines : MineField)
-    (_ : mines.countMines > 0)
-  : ∃ (mines0 mines1 : MineField),
-    mines = mines0 ++ singleton true ++ mines1 ∧
-    mines0.countMines = 0
-  := by sorry
-
-  theorem split_jump_landings
-    (jumps : Jumps) (i : Int)
-    (_ : i >= 0)
-    (_ : i < jumps.sum)
-  : ∃ (jumps0 : Jumps) (j : Jump) (jumps1 : Jumps),
-    jumps = jumps0 ++ singleton j ++ jumps1 ∧
-    jumps0.sum <= i ∧
-    jumps0.sum + j.length > i
-  := by sorry
-
-  theorem union_mines
-    (mines1 mines2 : MineField)
-    (_ : mines1.length = mines2.length)
-  : ∃ (mines : MineField),
-    mines1.length = mines.length ∧
-    mines2.length = mines.length ∧
-    mines1.countMines <= mines.countMines ∧
-    mines2.countMines <= mines.countMines ∧
-    (∀ x : ℤ, mines1.getIndexD x → mines.getIndexD x) ∧
-    (∀ x : ℤ, mines2.getIndexD x → mines.getIndexD x) ∧
-    mines.countMines <= mines1.countMines + mines2.countMines
-  := by sorry
-
-end Theorems
-
-example
-  (main_jumps : JumpSet)
-  (main_mines : MineField)
-  (grasshopper_ih
-  : ∀ (jumps : JumpSet) (mines : MineField),
-    jumps.sizeOf < main_jumps.sizeOf →
-    jumps.Nodup →
-    jumps.sum = mines.length+1 →
-    jumps.sizeOf > mines.countMines →
-    ∃ (jumps_ih : Jumps),
-    jumps = jumps_ih.s ∧
-    (∀ (x : ℤ), ¬jumps_ih.landings.getIndexD x ∨ ¬mines.getIndexD x)
-  ) :
-  main_jumps.Nodup →
-  main_jumps.sum = main_mines.length+1 →
-  main_jumps.sizeOf > main_mines.countMines →
-  ∃ (jumpso : Jumps),
-  main_jumps = jumpso.s ∧
-  (∀ (x : ℤ), ¬jumpso.landings.getIndexD x ∨ ¬main_mines.getIndexD x)
-:= by
-  intros
-  extract ⟨J, jumps, _, _⟩ := pop_max_jump main_jumps
-  extract ⟨mines0, mines1, _, _⟩ := split_mines main_mines J.length
-  · by_cases ¬(mines0.getIndexD (J.length - 1 : ℤ))
-    · extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines1
-      · use (singleton J : Jumps) ++ jumpso
-        refine' ⟨_, fun _ ↦ _⟩ <;> auto
-      · extract ⟨mines10, mines11, _, _⟩ := split_first_mine mines1
-        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines10 ++ singleton false ++ mines11)
-        by_cases ¬jumpso.landings.getIndexD mines10.length
-        · use (singleton J : Jumps) ++ jumpso
-          refine' ⟨_, fun _ ↦ _⟩ <;> auto
-        · extract ⟨jumps0, J2, jumps1, _, _⟩ := split_jump_landings jumpso (mines10.length+1) (by auto) (by auto)
-          use jumps0 ++ singleton J2 ++ singleton J ++ jumps1
-          refine' ⟨_, fun _ ↦ _⟩ <;> auto
-    · extract ⟨mines00, mines01, _, _⟩ := split_mines mines0 (J.length - 1)
-      extract ⟨mines10, mines11, _, _⟩ := split_mines mines1 mines00.length
-      · extract ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00 mines10
-        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines_un ++ mines11)
-        extract ⟨J2, jumpso', _⟩ := pop_first_jump jumpso
-        use singleton J2 ++ singleton J ++ jumpso'
-        refine' ⟨_, fun _ ↦ _⟩ <;> auto
-      · extract ⟨mines00', _, _, _⟩ := split_mines mines00 mines1.length
-        extract ⟨mines_un, _, _, _, _, _, _, _⟩ := union_mines mines00' mines1
-        extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines_un
-        extract ⟨J2, jumpso', _⟩ := pop_first_jump jumpso
-        use singleton J2 ++ singleton J ++ jumpso'
-        refine' ⟨_, fun _ ↦ _⟩ <;> auto
-  · extract ⟨jumpso⟩ := order_jumps jumps
-    use singleton J ++ jumpso
-    refine' ⟨_, fun _ ↦ _⟩ <;> auto
