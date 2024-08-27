@@ -1,5 +1,7 @@
 import Grasshopper.ProcessingAndAutomation
 
+set_option grasshopper.add_theorems true
+
 example
   (main_jumps : JumpSet)
   (main_mines : MineField)
@@ -32,7 +34,7 @@ example
         by_cases ¬jumpso.landings.getIndexD mines10.length
         · use (singleton J : Jumps) ++ jumpso
           refine' ⟨_, fun _ ↦ _⟩ <;> auto
-        · extract ⟨jumps0, J2, jumps1, _, _⟩ := split_jump_landings jumpso (mines10.length+1) (by auto) (by auto)
+        · extract ⟨jumps0, J2, jumps1, _, _⟩ := split_jump_landings jumpso (mines10.length+1)
           use jumps0 ++ singleton J2 ++ singleton J ++ jumps1
           refine' ⟨_, fun _ ↦ _⟩ <;> auto
     · extract ⟨mines00, mines01, _, _⟩ := split_mines mines0 (J.length - 1)

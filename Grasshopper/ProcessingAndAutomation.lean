@@ -46,9 +46,14 @@ partial def Expr.exportTheorem : Q(Prop) → TacticM String
   | ~q(@LE.le ($α : Type) (_ : LE $α) $a $b) => return s!"LE({← Expr.render a}, {← Expr.render b})"
   | e => Expr.render e
 
+register_option grasshopper.add_theorems : Bool := {
+  defValue := false
+  descr := "Whether to add the universal theorems to the local context."
+}
+
 elab _stx:"auto" : tactic => do
-  evalTactic <| ← `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
-  evalTactic <| ← `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
+  evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
+  evalTactic =<< `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
   withMainContext do
     let forbidden := #[`_example, `grasshopper_ih]
     let localDecls := (← getLCtx).decls.toArray.filterMap id |>.filter fun decl ↦ !(decl.kind == .implDetail || forbidden.contains decl.userName.getRoot)
@@ -64,7 +69,13 @@ elab _stx:"auto" : tactic => do
       if (← isProp decl.type) then
         Expr.exportTheorem decl.type
       else return none
-    let output : String := (context ++ #["\n---"] ++ hypotheses)
+    let universalTheorems : Array String ←
+      if (← getOptions).getBool ``grasshopper.add_theorems then
+        universalTheoremExt.getState (← getEnv) |>.mapM fun thmName ↦ do
+          let some thmInfo := (← getEnv).find? thmName | panic! s!"theorem {thmName} not found"
+          Expr.exportTheorem thmInfo.type
+      else pure #[]
+    let output : String := (context ++ #["\n---"] ++ hypotheses ++ universalTheorems)
       |>.map (String.push · '\n') |>.foldl (init := "") String.append
     logInfo output
     -- let fileMap ← getFileMap
@@ -79,7 +90,7 @@ elab _stx:"auto" : tactic => do
       throwError s!"Invalid file path to Python script."
     let child ← IO.Process.spawn {
       cmd := "./check_exported_lean.py",
-      args := #["--add_thms", "--substitute", "--instantiate", "--congruence", "--solver", "z3"],
+      args := #["--substitute", "--instantiate", "--congruence", "--solver", "z3"],
       stdin := .piped,
       stdout := .piped,
       stderr := .piped
