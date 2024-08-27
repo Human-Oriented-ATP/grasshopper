@@ -2,6 +2,7 @@ import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Finset.Image
 import Init.Classical
 import Mathlib.Tactic
+import Lean
 
 abbrev Jump := PNat
 abbrev MineField := List Bool
@@ -27,3 +28,27 @@ abbrev jumpOver (j : Jump) : MineField := List.replicate j.natPred false
 abbrev Jumps.landings (jumps : Jumps) : MineField := jumps.bind (fun j => (jumpOver j).concat true)
 abbrev Jumps.s (jumps : Jumps) : JumpSet := .ofList jumps
 abbrev Jumps.sum (jumps : Jumps) : Int := jumps.s.sum
+
+section UniversalTheorems
+
+open Lean
+
+initialize universalTheoremExt : PersistentEnvExtension Name Name (Array Name) ←
+  registerPersistentEnvExtension {
+    addImportedFn := Array.concatMapM pure,
+    addEntryFn := Array.push,
+    mkInitial := pure .empty,
+    exportEntriesFn := id
+  }
+
+initialize registerBuiltinAttribute {
+  name := `universal,
+  descr := "Universal theorem for the grasshopper problem",
+  applicationTime := .afterCompilation,
+  add := fun decl stx _ => do
+    Attribute.Builtin.ensureNoArgs stx
+    if (IR.getSorryDep (← getEnv) decl).isSome then return -- ignore in progress definitions
+    modifyEnv (universalTheoremExt.addEntry · decl)
+}
+
+end UniversalTheorems

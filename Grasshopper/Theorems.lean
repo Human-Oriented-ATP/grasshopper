@@ -63,26 +63,33 @@ import Grasshopper.Definitions
 
 section UniversalTheorems
 
+@[universal]
 theorem Jump.pos (j : Jump) : j.length > 0 := by
   simp only [gt_iff_lt, Nat.cast_pos, PNat.pos]
 
+@[universal]
 theorem JumpSet.length_nonneg (jumps : JumpSet) : jumps.sizeOf ≥ 0 := by
   simp only [ge_iff_le, zero_le]
 
+@[universal]
 theorem MineField.length_nonneg (mineField : MineField) : mineField.length ≥ 0 := by
   simp only [ge_iff_le, zero_le]
 
+@[universal]
 theorem MineField.count_nonneg (mines : MineField) : mines.countMines ≥ 0 := by
   simp only [ge_iff_le, zero_le]
 
+@[universal]
 theorem MineField.length_ge_count (mines : MineField) : mines.length ≥ mines.countMines :=
   mines.count_le_length true
 
 variable (mines : MineField) (idx : Int)
 
+@[universal]
 theorem MineField.getIndexD_nonneg : mines.getIndexD idx → idx ≥ 0 := by
   cases idx <;> simp [List.getIndexD]
 
+@[universal]
 theorem MineField.getIndexD_lt_length : mines.getIndexD idx → idx < mines.length := by
   match idx with
   | .ofNat n =>
@@ -90,6 +97,7 @@ theorem MineField.getIndexD_lt_length : mines.getIndexD idx → idx < mines.leng
     intros; assumption
   | .negSucc _ => exact fun _ => (compare_gt_iff_gt.mp) rfl
 
+@[universal]
 theorem MineField.getIndexD_count_pos : mines.getIndexD idx → 0 < mines.countMines := by
   match idx with
   | .ofNat _ =>
@@ -98,6 +106,7 @@ theorem MineField.getIndexD_count_pos : mines.getIndexD idx → 0 < mines.countM
   | .negSucc _ =>
     simp [List.getIndexD]
 
+@[universal]
 theorem MineField.full_count
   (hfull : mines.countMines ≥ mines.length)
   (hidx_nonneg : idx ≥ 0)

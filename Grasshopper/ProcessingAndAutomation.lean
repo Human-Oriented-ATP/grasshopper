@@ -46,7 +46,7 @@ partial def Expr.exportTheorem : Q(Prop) → TacticM String
   | ~q(@LE.le ($α : Type) (_ : LE $α) $a $b) => return s!"LE({← Expr.render a}, {← Expr.render b})"
   | e => Expr.render e
 
-elab stx:"auto" : tactic => do
+elab _stx:"auto" : tactic => do
   evalTactic <| ← `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
   evalTactic <| ← `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
   withMainContext do
