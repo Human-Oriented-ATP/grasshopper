@@ -92,7 +92,7 @@ theorem JumpSet.sizeOf_le_sum (jumps : JumpSet) : jumps.sizeOf ≤ jumps.sum := 
   exact Jump.pos i
 
 @[universal]
-theorem JumpSet.length_eq_zero (jumps : JumpSet) : jumps.sum = 0 → jumps.sizeOf = (0 : Int) := by
+theorem JumpSet.sizeOf_eq_zero (jumps : JumpSet) : jumps.sizeOf = (0 : Int) → jumps.sum = (0 : Int) := by
   simp only [JumpSet.sum]
   have Multiset.sizeOf_eq : ∀ {α} (s : Multiset α), s.sizeOf = (s.map (fun _ ↦ (1 : Int))).sum := by
     intros
