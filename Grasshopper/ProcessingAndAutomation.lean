@@ -54,15 +54,22 @@ register_option grasshopper.add_theorems : Bool := {
 macro "push_neg" : tactic =>
   `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
 
-elab "add_theorems" : tactic => do
+elab "add_theorems" : tactic => withMainContext do
   if (← getOptions).getBool ``grasshopper.add_theorems then
     for thmName in universalTheoremExt.getState (← getEnv) do
       evalTactic =<< `(tactic| have $(mkIdent <| thmName ++ `local) := $(mkIdent thmName))
+
+elab "substitute" : tactic => withMainContext do
+  for decl in (← getLCtx) do
+    try
+      liftMetaTactic1 (subst · decl.fvarId)
+    catch _ => continue
 
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
   evalTactic =<< `(tactic| push_neg)
   evalTactic =<< `(tactic| add_theorems)
+  evalTactic =<< `(tactic| substitute)
   withMainContext do
     let forbidden := #[`_example, `grasshopper_ih]
     let localDecls := (← getLCtx).decls.toArray.filterMap id |>.filter fun decl ↦ !(decl.kind == .implDetail || forbidden.contains decl.userName.getRoot)
@@ -93,7 +100,7 @@ elab _stx:"auto" : tactic => do
       throwError s!"Invalid file path to Python script."
     let child ← IO.Process.spawn {
       cmd := "./check_exported_lean.py",
-      args := #["--substitute", "--instantiate", "--congruence", "--solver", "z3"],
+      args := #["--instantiate", "--congruence", "--solver", "z3"],
       stdin := .piped,
       stdout := .piped,
       stderr := .piped

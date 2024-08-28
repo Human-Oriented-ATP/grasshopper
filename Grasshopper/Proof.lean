@@ -29,7 +29,7 @@ example
     · extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps mines1
       · use (singleton J : Jumps) ++ jumpso
         refine' ⟨_, fun _ ↦ _⟩ <;> auto
-      · extract ⟨mines10, mines11, _, _⟩ := split_first_mine mines1 (by auto)
+      · extract ⟨mines10, mines11, _, _⟩ := split_first_mine mines1
         extract ⟨jumpso, _, _⟩ := grasshopper_ih jumps (mines10 ++ singleton false ++ mines11)
         by_cases ¬jumpso.landings.getIndexD mines10.length
         · use (singleton J : Jumps) ++ jumpso
