@@ -51,18 +51,9 @@ register_option grasshopper.add_theorems : Bool := {
   descr := "Whether to add the universal theorems to the local context."
 }
 
-macro "push_neg" : tactic =>
-  `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
-
-elab "add_theorems" : tactic => withMainContext do
-  if (← getOptions).getBool ``grasshopper.add_theorems then
-    for thmName in universalTheoremExt.getState (← getEnv) do
-      evalTactic =<< `(tactic| have $(mkIdent <| thmName ++ `local) := $(mkIdent thmName))
-
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
-  evalTactic =<< `(tactic| push_neg)
-  evalTactic =<< `(tactic| add_theorems)
+  evalTactic =<< `(tactic| simp only [Classical.not_imp, not_and, not_forall, not_exists, not_not, not_true, not_false_iff, not_le, not_lt] at *)
   withMainContext do
     let forbidden := #[`_example, `grasshopper_ih]
     let localDecls := (← getLCtx).decls.toArray.filterMap id |>.filter fun decl ↦ !(decl.kind == .implDetail || forbidden.contains decl.userName.getRoot)
@@ -78,7 +69,13 @@ elab _stx:"auto" : tactic => do
       if (← isProp decl.type) then
         Expr.exportTheorem decl.type
       else return none
-    let output : String := (context ++ #["\n---"] ++ hypotheses)
+    let universalTheorems : Array String ←
+      if (← getOptions).getBool ``grasshopper.add_theorems then
+        universalTheoremExt.getState (← getEnv) |>.mapM fun thmName ↦ do
+          let some thmInfo := (← getEnv).find? thmName | panic! s!"theorem {thmName} not found"
+          Expr.exportTheorem thmInfo.type
+      else pure #[]
+    let output : String := (context ++ #["\n---"] ++ hypotheses ++ universalTheorems)
       |>.map (String.push · '\n') |>.foldl (init := "") String.append
     logInfo output
     -- let fileMap ← getFileMap
