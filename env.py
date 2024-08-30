@@ -244,7 +244,9 @@ class GrasshopperEnv:
     def solve_with_jumps(self, jumps):
 
         assert isinstance(jumps, Jumps)
-        self.prove(equals(jumps.s, self.jumps))
+        # self.prove(equals(jumps.s, self.jumps))
+        self.prove(equals((jumps.s - self.jumps).length, 0))
+        self.prove(equals((self.jumps - jumps.s).length, 0))
 
         boom = TermInt.fixed_var('boom')
         landings_boom = jumps.landings[boom]
