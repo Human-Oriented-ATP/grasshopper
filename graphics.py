@@ -137,6 +137,13 @@ class GObject:
     @property
     def bounding_box(self):
         return self.raw_bounding_box.scale(self.scale_coef).translate(*self.coor)
+    @property
+    def x(self):
+        return self.coor[0]
+    @property
+    def y(self):
+        return self.coor[1]
+
     def translate(self, x,y):
         self.coor = (self.coor[0]+x, self.coor[1]+y)
     def scale(self, scale_coef):

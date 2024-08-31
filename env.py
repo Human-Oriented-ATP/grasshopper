@@ -104,6 +104,39 @@ class LogicContext:
             self.var_to_value[value_v] = None
         self.add_fact(equals(v, value), deconstruction = True)
 
+    def undeconstruct(self, value):
+        # find the previous value
+        for prev, prev_val in self.var_to_value.items():
+            if prev_val == value:
+                break
+        else:
+            if not value.all_vars:
+                return None
+            for prev, prev_val in self.var_to_value.items():
+                if prev_val is not None and prev_val.all_vars == value.all_vars:
+                    break
+            else:
+                return None
+        # viability check
+        for v in value.all_vars:
+            if self.var_to_value[v] is not None:
+                return None
+
+        # update self.var_to_value
+        for v in prev_val.all_vars:
+            del self.var_to_value[v]
+        self.var_to_value[prev] = None
+
+        # update facts
+        def keep_prop(prop):
+            return not (value.all_vars & prop.all_vars)
+        def keep_fact(fact):
+            return keep_prop(fact.prop)
+        self.facts = list(filter(keep_fact, self.facts))
+        self.model_constraints = list(filter(keep_prop, self.model_constraints))
+        
+        return prev
+
     def show_assumed(self):
         print("Assumptions:")
         for fact in self.facts:
@@ -299,6 +332,9 @@ class GrasshopperEnv:
         else:
             self.ctx = None
             self.proven = True
+
+    def undeconstruct(self, value):
+        return self.ctx.undeconstruct(value)
 
     ######  Domain specific operations
 

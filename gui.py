@@ -546,6 +546,10 @@ class GrasshopperGui(Gtk.Window):
             self.empty_mines_selected()
         elif keyval_name == 'c':
             self.cut_jumps_selected()
+        elif keyval_name == 'u':
+            self.union_mines_selected()
+        elif keyval_name == 'z':
+            self.undeconstruct_selected()
 
         # debug commands
         elif keyval_name == 'u':
@@ -654,6 +658,7 @@ class GrasshopperGui(Gtk.Window):
     # Model
 
     def model_updated(self):
+        self.selection = set()
         if not self.env.proven:
             for obj in self.objects:
                 obj.model_updated()
@@ -779,8 +784,19 @@ class GrasshopperGui(Gtk.Window):
         self.model_updated()
         return gmines0, gmine, gmines1
 
-    def pop_first_jump(self, jumps):
-        return None # TODO
+    def pop_first_jump(self, gjumps):
+        jumps = gjumps.jumps
+        if isinstance(jumps, JumpSet):
+            return None
+        if self.env.ctx.model[jumps.length].value() == 0:
+            return None
+        jump, jumpsr = self.env.pop_first_jump(jumps)
+        x,y = gjumps.coor_abstract
+        gjump = GJumps(self, gjumps.coor_abstract, Jumps(jump))
+        gjumpsr = GJumps(self, (x+jump.length, y), jumpsr)
+        self.save_side_goals()
+        self.model_updated()
+        return gjump, gjumpsr
 
     def empty_mines_selected(self):
         if len(self.selection) != 1: return
@@ -824,6 +840,44 @@ class GrasshopperGui(Gtk.Window):
         self.save_side_goals()
         self.model_updated()
         return gjumps0, gjump, gjumps1
+
+    def union_mines_selected(self):
+        if len(self.selection) != 2: return
+        mines1, mines2 = self.selection
+        if not isinstance(mines1, GMines): return
+        if not isinstance(mines2, GMines): return
+        res = self.union_mines(mines1, mines2)
+        if res is None: return
+        self.add_object(res)
+        self.darea.queue_draw()
+
+    def union_mines(self, gmines1, gmines2):
+        if gmines1.x != gmines2.x:
+            return None
+        if gmines1.y < gmines2.y:
+            gmines1, gmines2 = gmines2, gmines1
+        mines_un = self.env.union_mines(gmines1.mines, gmines2.mines)
+        gmines_un = GMines(self, gmines1.coor_abstract, mines_un)
+        self.save_side_goals()
+        self.model_updated()
+        gmines1.translate(0,-1)
+        gmines2.translate(0,-1)
+        return gmines_un
+
+    def undeconstruct_selected(self):
+        if len(self.selection) != 1: return
+        [gobj] = self.selection
+        if isinstance(gobj, GJumps): obj = gobj.jumps
+        elif isinstance(gobj, GMines): obj = gobj.mines
+        else: return
+        res = self.env.undeconstruct(obj)
+        if res is None: return
+        if isinstance(res, (Jumps, JumpSet)): gtype = GJumps
+        elif isinstance(res, MineField): gtype = GMines
+        gres = gtype(self, gobj.coor_abstract, res)
+        self.remove_objects(gobj)
+        self.add_object(gres)
+        self.darea.queue_draw()
 
 if __name__ == "__main__":
 
