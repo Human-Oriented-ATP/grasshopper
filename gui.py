@@ -207,8 +207,20 @@ class GMines(Splittable):
             elif isinstance(part, MineField):
                 length = self.env.ctx.model[part.length].value()
                 count = self.env.ctx.model[part.count].value()
-            self.mines_val.extend([True]*count)
-            self.mines_val.extend([False]*(length-count))
+
+            part_val = [False]*length
+            pos_to_val = self.gui.mines_to_known.get(part, dict())
+            remains = count
+            for pos,val in pos_to_val.items():
+                if val and 0 <= pos < length:
+                    remains -= 1
+                    part_val[pos] = True
+            for pos in range(length):
+                if not remains: break
+                if pos not in pos_to_val:
+                    part_val[pos] = True
+                    remains -= 1
+            self.mines_val.extend(part_val)
 
         self.raw_bounding_box = BoundingBox(0,-1,-0.5,self.length-0.5)
 
@@ -312,6 +324,7 @@ class GrasshopperGui(Gtk.Window):
         self.select_grasp = None
         self.selection = set()
         self.select_style = Style(fill = (0,0,1,0.1))
+        self.mines_to_known = dict()
 
         self.darea = Gtk.DrawingArea()
         self.darea.connect("draw", self.on_draw)
@@ -432,7 +445,9 @@ class GrasshopperGui(Gtk.Window):
             x,y = self.pixel_to_coor((e.x, e.y))
             for obj in reversed(self.objects):
                 if obj not in self.selection and obj.bounding_box.contains(x,y):
+                    self.selection = set([obj])
                     self.grasp_objects([obj], x,y)
+                    self.darea.queue_draw()
                     break
             else:
                 if self.select_bounding_box().contains(x,y):
@@ -450,8 +465,7 @@ class GrasshopperGui(Gtk.Window):
                     for obj2 in self.objects:
                         res = obj2.join(obj)
                         if res is not None:
-                            self.objects.remove(obj)
-                            self.objects.remove(obj2)
+                            self.remove_objects(obj, obj2)
                             self.objects.append(res)
                             self.darea.queue_draw()
                             break
@@ -459,15 +473,14 @@ class GrasshopperGui(Gtk.Window):
                     for obj2 in self.objects:
                         res = obj.join(obj2)
                         if res is not None:
-                            self.objects.remove(obj)
-                            self.objects.remove(obj2)
+                            self.remove_objects(obj, obj2)
                             self.objects.append(res)
                             self.darea.queue_draw()
                             break
                 else:
                     objs = obj.split(n)
                     if objs is not None:
-                        self.objects.remove(obj)
+                        self.remove_objects(obj)
                         self.objects.extend(objs)
                         self.darea.queue_draw()
 
@@ -529,6 +542,7 @@ class GrasshopperGui(Gtk.Window):
         elif keyval_name == 's':
             self.solve_with_jumps_selected()
         elif keyval_name == 'S': # Sorry
+            print("!!! SORRY USED !!!")
             self.env._next_goal()
             self.restore_side_goal()
             self.model_updated()
@@ -591,13 +605,13 @@ class GrasshopperGui(Gtk.Window):
             bb = self.select_bounding_box()
             self.select_bounding_box().draw(cr)
             self.select_style.paint(cr)
-            for obj in self.objects:
-                if obj in self.selection: continue
-                corners = obj.bounding_box.corners
-                if any(bb.contains(*corner) for corner in corners):
-                    obj.bounding_box.add_offset(0.5).draw(cr)
-                    cr.set_source_rgb(*bg_color)
-                    cr.fill()
+            # for obj in self.objects:
+            #     if obj in self.selection: continue
+            #     corners = obj.bounding_box.corners
+            #     if any(bb.contains(*corner) for corner in corners):
+            #         obj.bounding_box.add_offset(0.5).draw(cr)
+            #         cr.set_source_rgb(*bg_color)
+            #         cr.fill()
         if self.select_grasp is not None:
             (x1,y1),(x2,y2) = self.select_grasp
             cr.rectangle(x1,y2,x2-x1,y1-y2)
@@ -659,9 +673,21 @@ class GrasshopperGui(Gtk.Window):
 
     def model_updated(self):
         self.selection = set()
+        self.mines_to_known = dict()
+
         if not self.env.proven:
-            for obj in self.objects:
-                obj.model_updated()
+            for prop, value in self.env.ctx.model.base_dict.items():
+                if prop.f != MineField.getitem: continue
+                mines, n = prop.args
+                n = self.env.ctx.model[n].value()
+                value = value.value()
+                pos_to_value = self.mines_to_known.setdefault(mines, dict())
+                pos_to_value[n] = value
+
+            if not self.env.proven:
+                for obj in self.objects:
+                    obj.model_updated()
+
         self.darea.queue_draw()
 
     def change_length_selected(self, change):
