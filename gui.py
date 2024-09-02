@@ -564,6 +564,8 @@ class GrasshopperGui(Gtk.Window):
             self.union_mines_selected()
         elif keyval_name == 'z':
             self.undeconstruct_selected()
+        elif keyval_name == 'a':
+            self.pop_avoiding_selected()
 
         # debug commands
         elif keyval_name == 'u':
@@ -708,9 +710,10 @@ class GrasshopperGui(Gtk.Window):
 
     def change_number(self, number, change):
         value = self.env.ctx.model[number]
+        selection = self.selection
         self.env.ctx.add_model_constraints(equals(number, value+TermInt(change)))
         self.model_updated()
-
+        self.selection = selection
 
     # Model
     #####################
@@ -740,6 +743,33 @@ class GrasshopperGui(Gtk.Window):
         self.model_updated()
         return J_gr, rest_gr
 
+    def pop_avoiding_selected(self):
+        if len(self.selection) != 2: return
+        [jumps,mines] = self.selection
+        if isinstance(mines, GJumps): jumps, mines = mines, jumps
+        if not isinstance(jumps, GJumps): return
+        if not isinstance(jumps.jumps, JumpSet): return
+        if not isinstance(mines, GMines): return
+        if not jumps.x+1 == mines.x: return
+        try:
+            jump, jumpsr = self.pop_avoiding(jumps, mines)
+        except Exception as e:
+            print(e)
+            return
+        self.remove_objects(jumps)
+        self.add_object(jump)
+        self.add_object(jumpsr)
+        self.darea.queue_draw()
+
+    def pop_avoiding(self, gjumps, gmines):
+        jump, jumpsr = self.env.pop_avoiding_jump(gjumps.jumps, gmines.mines)
+        gjump = GJumps(self, gjumps.coor_abstract, Jumps(jump))
+        x,y = gjumps.coor_abstract
+        gjumpsr = GJumps(self, (x+jump.length, y), jumpsr)
+        self.save_side_goals()
+        self.model_updated()
+        return gjump, gjumpsr
+
     def induction_selected(self):
         if len(self.selection) != 2: return
         [jumps, mines] = self.selection
@@ -757,7 +787,7 @@ class GrasshopperGui(Gtk.Window):
         self.darea.queue_draw()
 
     def induction(self, jumps, mines):
-        assert jumps.coor[0]+1 == mines.coor[0]
+        assert jumps.x+1 == mines.x
         assert jumps.length == mines.length+1
         jumpso = self.env.induction(jumps.jumps, mines.mines)
         jumpso_gr = GJumps(self, jumps.coor_abstract, jumpso)
