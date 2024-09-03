@@ -85,6 +85,16 @@ elab "generate_congruence_theorem" c:"checkTypes"? t:ident : tactic => withMainC
   let congrThmStx ← PrettyPrinter.delab congrThm
   evalTactic =<< `(tactic| have $(mkIdent (t.getId ++ `congr)) : $congrThmStx := by intros; substitute; rfl)
 
+elab "congruence" : tactic => withMainContext do
+  let localConsts : Array Name := (← getLCtx).foldl (init := #[]) fun consts decl ↦
+    if decl.isAuxDecl then
+      consts
+    else
+      decl.type.foldConsts (init := consts) <| fun const acc ↦
+        if const ∈ acc then acc else acc.push const
+  for const in localConsts do
+    evalTactic =<< `(tactic| try (generate_congruence_theorem $(mkIdent const)))
+
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
   evalTactic =<< `(tactic| push_neg)
