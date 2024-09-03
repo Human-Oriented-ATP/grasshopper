@@ -202,6 +202,7 @@ def get_model(hard_constraints, optional_constraints, extra_terms = (), solver_c
         extra_terms = [subst[term] for term in extra_terms],
         **kwargs,
     )
+    if isinstance(lia_base, ProvenTrivially): return None
 
     def finish_model(model):
         if extra_terms:

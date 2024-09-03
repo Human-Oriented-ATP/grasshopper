@@ -137,6 +137,13 @@ class GObject:
     @property
     def bounding_box(self):
         return self.raw_bounding_box.scale(self.scale_coef).translate(*self.coor)
+    @property
+    def x(self):
+        return self.coor[0]
+    @property
+    def y(self):
+        return self.coor[1]
+
     def translate(self, x,y):
         self.coor = (self.coor[0]+x, self.coor[1]+y)
     def scale(self, scale_coef):
@@ -146,7 +153,7 @@ class GObject:
             bounding_box.width / self.raw_bounding_box.width,
             bounding_box.height / self.raw_bounding_box.height,
         )
-        self.move_to(*bounding_box.coor)
+        self.move_center_to(*bounding_box.center)
     def move_center_to(self, x2,y2):
         x1,y1 = self.raw_bounding_box.center
         self.coor = (x2-x1*self.scale_coef, y2-y1*self.scale_coef)

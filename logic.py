@@ -451,6 +451,11 @@ class Substitution:
             base_dict.setdefault(key, value)
         return Substitution(base_dict)
 
+    def show(self):
+        print("Substitution:")
+        for v,value in self.base_dict.items():
+            print(f"{v} -> {value}")
+
 class TermInt(Term):
     def __init__(self, *args, **kwargs):
         if self.initialized: return
@@ -621,6 +626,7 @@ class TermSequence(Term):
         @term_fun
         def concat(*args) -> cls:
             assert all(isinstance(arg, (cls, base_type)) for arg in args)
+            if len(args) == 1 and isinstance(args[0], cls): return args[0]
             if not any(arg.f == cls.concat for arg in args): return None # just build term
             else: # simplify
                 parts = []
@@ -684,6 +690,8 @@ class MineField(TermSequence, default = TermBool.false):
             return self.args[0].number
         elif self.f == Jump.to_empty_minefield.fget:
             return TermInt(0)
+        elif self.f == MineField.empty_copy.fget:
+            return TermInt(0)
         else:
             return None
 
@@ -706,6 +714,9 @@ class MineField(TermSequence, default = TermBool.false):
             return disjunction(*options)
         elif self.f == Jump.to_empty_minefield.fget:
             return TermBool.false
+        elif self.f == MineField.empty_copy.fget:
+            [arg] = self.args
+            return arg.length
         elif (n < 0).guaranteed:
             return TermBool.false
         else:
@@ -724,12 +735,25 @@ class MineField(TermSequence, default = TermBool.false):
             return TermInt.sum(*summands, const = const)
         elif self.f == Jump.to_empty_minefield.fget:
             return TermInt(self.args[0].length-1)
+        elif self.f == MineField.empty_copy.fget:
+            return self.args[0].length
         elif self.f == Jumps.landings.fget:
             return TermInt(self.args[0].length)
         else:
             return None
 
+    @property
+    @term_fun
+    def empty_copy(self):
+        assert isinstance(self, MineField)
+        if self.length.is_num_const:
+            l = self.length.value()
+            return MineField([False]*l)
+        else:
+            return None
+
 MineField.getitem.notation = lambda s,n: f"{n} in {s}"
+MineField.empty_copy.fget.out_type = MineField
 
 class Jump(Term): # positive integer
 
@@ -844,6 +868,33 @@ class JumpSet(Term):
 
     @staticmethod
     @term_fun
+    def subtract(A, B):
+        assert isinstance(A, JumpSet)
+        assert isinstance(B, JumpSet)
+        if A == B or not A.merge_args: return JumpSet.merge()
+        elif not B.merge_args: return A
+        if not (set(A.merge_args) & set(B.merge_args)):
+            return None
+
+        obj_to_count = defaultdict(int)
+        for obj in A.merge_args:
+            obj_to_count[obj] += 1
+        for obj in B.merge_args:
+            obj_to_count[obj] -= 1
+        A_simp = []
+        B_simp = []
+        for obj,count in obj_to_count.items():
+            if count > 0: A_simp.extend([obj]*count)
+            elif count < 0: B_simp.extend([obj]*(-count))
+        A_simp = JumpSet.merge(*A_simp)
+        B_simp = JumpSet.merge(*B_simp)
+        return JumpSet.subtract(A_simp, B_simp)
+
+    def __sub__(self, other):
+        return JumpSet.subtract(self, other)
+    
+    @staticmethod
+    @term_fun
     def _contains(self, jump) -> TermBool:
         assert isinstance(self, JumpSet)
         assert isinstance(jump, Jump)
@@ -907,6 +958,7 @@ class JumpSet(Term):
 JumpSet.merge.out_type = JumpSet
 JumpSet.merge.notation = JumpSet.merge_notation
 JumpSet._contains.notation = lambda s,j: f"{j} in {s}"
+JumpSet.subtract.out_type = JumpSet
 
 class Jumps(TermSequence, default = Jump(1)):
     @property

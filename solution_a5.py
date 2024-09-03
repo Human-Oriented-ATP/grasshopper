@@ -1,4 +1,4 @@
-from logic import equals, MineField
+from logic import equals, MineField, Jumps
 from env import GrasshopperEnv
 import prover
 
@@ -13,7 +13,7 @@ def solution(env):
     jumpso = env.induction(jumps, mines1)
     env.solve_with_jumps(J + jumpso)
 
-    env.ctx.remove_var(jumpso) # a hack to traceback before IH step
+    assert env.undeconstruct(jumpso) == jumps
 
     mines00, mines01 = env.split_mines(mines0, J.length-1)
 
@@ -37,8 +37,8 @@ def solution(env):
     jumps0, J2, jumps1 = env.split_jump_landings(jumpso, mines10.length+1)
     env.solve_with_jumps(jumps0 + J2 + J + jumps1)
 
-    jumpso = env.order_jumps(jumps)
-    env.solve_with_jumps(J+jumpso)
+    # jumpso = env.order_jumps(jumps)
+    env.solve_with_jumps(Jumps([J]))
 
 if __name__ == "__main__":
     env = GrasshopperEnv(auto_assume = True)
