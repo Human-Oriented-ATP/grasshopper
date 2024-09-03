@@ -65,6 +65,26 @@ elab "substitute" : tactic => withMainContext do
       liftMetaTactic1 (subst · decl.fvarId)
     catch _ => continue
 
+elab "generate_congruence_theorem" c:"checkTypes"? t:ident : tactic => withMainContext do
+  let check? := c.isSome
+  let guardExprType (e : Expr) : TacticM Unit := do
+    if check? then
+      guard <| e.constName ∈ [``Int, ``Nat, ``Bool]
+  let fn ← Term.elabTerm t none
+  let stmt ← inferType fn
+  let (mvars, _, conclusion) ← forallMetaTelescope stmt
+  guardExprType conclusion
+  let (mvars', _, conclusion') ← forallMetaTelescope stmt
+  guardExprType conclusion'
+  let hyps ← Array.zip mvars mvars' |>.mapM fun (var, var') ↦ do
+    guardExprType =<< inferType var
+    guardExprType =<< inferType var'
+    let eqn ← mkEq var var'
+    mkFreshExprMVar eqn
+  let congrThm ← mkForallFVars (mvars ++ mvars' ++ hyps) (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
+  let congrThmStx ← PrettyPrinter.delab congrThm
+  evalTactic =<< `(tactic| have $(mkIdent (t.getId ++ `congr)) : $congrThmStx := by intros; substitute; rfl)
+
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
   evalTactic =<< `(tactic| push_neg)
