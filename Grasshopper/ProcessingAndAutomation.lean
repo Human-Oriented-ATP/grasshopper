@@ -81,7 +81,7 @@ elab "generate_congruence_theorem" c:"checkTypes"? t:ident : tactic => withMainC
     guardExprType =<< inferType var'
     let eqn ← mkEq var var'
     mkFreshExprMVar eqn
-  let congrThm ← mkForallFVars (mvars ++ mvars' ++ hyps) (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
+  let congrThm ← mkForallFVars (mvars ++ mvars') <| ← mkForallFVars (binderInfoForMVars := .default) hyps (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
   let congrThmStx ← PrettyPrinter.delab congrThm
   evalTactic =<< `(tactic| have $(mkIdent (t.getId ++ `congr)) : $congrThmStx := by intros; substitute; rfl)
 
