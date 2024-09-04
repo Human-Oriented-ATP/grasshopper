@@ -124,17 +124,38 @@ partial def generateSkeletonMap : TacticM <| HashMap Expr (Array (Array Expr)) :
     let m' ← e.generateSkeletonMap
     return m.mergeWith (fun _ ↦ Array.append) m'
 
+def generateConguenceLemmas : TacticM Unit := withMainContext do
+  (← generateSkeletonMap).forM generateConguenceLemmasAux
+where
+  generateConguenceLemmasAux (skeleton : Expr) (exprs : Array (Array Expr)) : TacticM Unit := withMainContext do
+    let congrLemma ← generateConguenceLemma <| ← abstractSkeleton skeleton
+    for args in exprs do
+      for args' in exprs do
+        unless args == args' do
+          let congrLemmaInst ← mkAppM' congrLemma (args ++ args')
+          let congrLemmaInstStx ← PrettyPrinter.delab congrLemmaInst
+          evalTactic =<< `(tactic| have := $congrLemmaInstStx)
+  abstractSkeleton (skeleton : Expr) : MetaM Expr := do
+    let (_, ⟨_, _, fvarIds⟩) ← skeleton.collectFVars |>.run {}
+    mkLambdaFVars (fvarIds.map .fvar) skeleton
+  generateConguenceLemma (fn : Expr) : MetaM Expr := do
+    let stmt ← inferType fn
+    let (mvars, _, conclusion) ← forallMetaTelescope stmt
+    guard <| ← conclusion.isBoolOrInt
+    let (mvars', _, conclusion') ← forallMetaTelescope stmt
+    guard <| ← conclusion'.isBoolOrInt
+    let hyps ← Array.zip mvars mvars' |>.mapM fun (var, var') ↦ do
+      guard <| ← var.isBoolOrInt
+      guard <| ← var'.isBoolOrInt
+      let eqn ← mkEq var var'
+      mkFreshExprMVar eqn
+    let congrThm ← mkForallFVars (mvars ++ mvars')
+              <| ← mkForallFVars (binderInfoForMVars := .default) hyps (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
+    return congrThm
+
 end Congruence
 
-elab "congruence" : tactic => withMainContext do
-  let localConsts : Array Name := (← getLCtx).foldl (init := #[]) fun consts decl ↦
-    if decl.isAuxDecl then
-      consts
-    else
-      decl.type.foldConsts (init := consts) <| fun const acc ↦
-        if const ∈ acc then acc else acc.push const
-  for const in localConsts do
-    evalTactic =<< `(tactic| try (generate_congruence_theorem $(mkIdent const)))
+elab "congruence" : tactic => do generateConguenceLemmas
 
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
