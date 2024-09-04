@@ -85,6 +85,47 @@ elab "generate_congruence_theorem" c:"checkTypes"? t:ident : tactic => withMainC
   let congrThmStx ← PrettyPrinter.delab congrThm
   evalTactic =<< `(tactic| have $(mkIdent (t.getId ++ `congr)) : $congrThmStx := by intros; substitute; rfl)
 
+section Congruence
+
+def Lean.Expr.isBoolOrInt (e : Expr) : MetaM Bool := do
+  let type ← inferType e
+  return type.isConstOf `Bool || type.isConstOf `Int
+
+partial def Lean.Expr.generateSkeleton (e : Expr) : StateT (Array Expr × Nat) MetaM Expr := do
+  guard <| ← e.isBoolOrInt
+  e.withApp fun f args => do
+    let args' ← args.mapM fun arg ↦ do
+      if ← arg.isBoolOrInt then
+        modifyGet fun ⟨es, n⟩ ↦
+          (.fvar ⟨.num `skeleton_var n⟩, ⟨es.push arg, n.succ⟩)
+      else
+        arg.generateSkeleton
+    return mkAppN f args'
+
+partial def Lean.Expr.collectBoolOrIntSubExprs (e : Expr) : StateT (Array Expr) MetaM Unit := do
+  e.withApp fun _ args => do
+    for arg in args do
+      if ← arg.isBoolOrInt then
+        modify (·.push arg)
+      arg.collectBoolOrIntSubExprs
+
+def Lean.Expr.generateSkeletonMap (e : Expr) : MetaM <| HashMap Expr (Array (Array Expr)) := do
+  let e ← reduce <| ← instantiateMVars e
+  let (_, subExprs) ← (collectBoolOrIntSubExprs e).run #[]
+  subExprs.foldlM (init := {}) fun m e ↦ do
+    let (skeleton, ⟨args, _⟩) ← generateSkeleton e |>.run (.empty, 0)
+    match m.find? skeleton with
+    | some exprs => return m.insert skeleton (exprs.push args)
+    | none => return m.insert skeleton #[args]
+
+partial def generateSkeletonMap : TacticM <| HashMap Expr (Array (Array Expr)) := withMainContext do
+  (← getLCtx).foldlM (init := {}) fun m decl ↦ do
+    let e := decl.type
+    let m' ← e.generateSkeletonMap
+    return m.mergeWith (fun _ ↦ Array.append) m'
+
+end Congruence
+
 elab "congruence" : tactic => withMainContext do
   let localConsts : Array Name := (← getLCtx).foldl (init := #[]) fun consts decl ↦
     if decl.isAuxDecl then
