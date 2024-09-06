@@ -1,5 +1,6 @@
 from weakref import WeakValueDictionary
 from collections import defaultdict
+from arith_pair import ArithPair
 import itertools
 
 FREE_VAR = "FREE_VAR"
@@ -429,6 +430,10 @@ class Substitution:
     def __getitem__(self, term):
         if isinstance(term, Substitution):
             term.substitute(self)
+        elif isinstance(term, ArithPair):
+            return ArithPair(self[term.x], self[term.y])
+        elif isinstance(term, tuple):
+            return tuple(self[x] for x in term)
         res = self.cache.get(term)
         if res is None:
             if self.var_only and not (term.all_vars & self.vs): res = term

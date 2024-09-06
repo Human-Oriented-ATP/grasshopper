@@ -7,8 +7,9 @@ from gi.repository import Gtk, Gdk, GLib
 import cairo
 from logic import *
 from env import GrasshopperEnv
-from prover import FailedProof
+from prover import FailedProof, extract_subst
 import itertools
+from collections import defaultdict
 
 from graphics import *
 
@@ -18,42 +19,18 @@ def remove_prefix(text, prefix):
     return text
 
 class Splittable(GObject):
-    def __init__(self, gui, coor_base, length_abstract, x_offset = 0):
+    def __init__(self, gui, coor_abstract, length_abstract, x_offset = 0):
         super().__init__()
         self.gui = gui
         self.env = self.gui.env
-        self.coor_base = coor_base
-        x,y = coor_base
-        self.coor_start = self.env.ctx.model[x].value(), self.env.ctx.model[y].value()
-        self.coor = self.coor_start
+        self.coor_abstract = coor_abstract
+        self.coor = self.env.ctx.model[coor_abstract].value()
         self.length_abstract = length_abstract
-        self.length = self.env.ctx.model[x].value()
+        self.length = self.env.ctx.model[length_abstract].value()
         self.x_offset = x_offset
 
-    @property
-    def coor_abstract(self):
-        x_start, y_start = self.coor_start
-        x,y = self.coor
-        x_base, y_base = self.coor_base
-        return (
-            x_base + TermInt(x - x_start),
-            y_base + TermInt(y - y_start),
-        )
-
     def model_updated(self):
-        x_start, y_start = self.coor_start
-        x,y = self.coor
-        x_base, y_base = self.coor_base
-        x_start2 = self.env.ctx.model[x_base].value()
-        y_start2 = self.env.ctx.model[y_base].value()
-        self.coor = (
-            x - x_start + x_start2,
-            y - y_start + y_start2,
-        )
-        self.coor_start = (
-            x_start2,
-            y_start2,
-        )
+        self.coor = self.env.ctx.model[self.coor_abstract].value()
         self.length = self.env.ctx.model[self.length_abstract].value()
 
     def split(self, n):
@@ -64,24 +41,40 @@ class Splittable(GObject):
     def join(self, other):
         if other == self: return None
         if not isinstance(other, type(self)): return None
-        if other.coor[1] != self.coor[1]: return None
-        if other.coor[0] != self.coor[0] + self.length: return None
+        if other.coor.y != self.coor.y: return None
+        if other.coor.x != self.coor.x + self.length: return None
         res = self.join_raw(other)
         return res
 
-    def point_interpretations(self, x, y):
-        ax0,ay = self.coor_abstract
-        for ax in (ax0, ax0+self.length_abstract):
-            vx = self.env.ctx.model[ax].value()
-            vy = self.env.ctx.model[ay].value()
-            x_dist = abs(vx + self.x_offset - x)
-            y_dist = abs(vy - y)
-            precedence = (x_dist, y_dist)
-            interpretation = (
-                ax + TermInt(- vx + math.floor(x)),
-                ay + TermInt(- vy + math.floor(y)),
-            )
-            yield precedence, interpretation
+    def translate(self, shift):
+        self.coor_abstract = self.coor_abstract + shift
+        self.coor = self.env.ctx.model[self.coor_abstract].value()
+
+    def endpoints(self):
+        ax,ay = self.coor_abstract
+        vx,xy = self.coor
+        yield (
+            self.coor.x_shift(self.x_offset),
+            self.coor_abstract,
+            (self, 0),
+        )
+        yield (
+            self.coor.x_shift(self.x_offset+self.length),
+            self.coor_abstract.x_shift(self.length_abstract),
+            (self, 1),
+        )
+
+    def point_interpretations(self, point):
+        return self.points_interpretations([(point)])
+
+    def points_interpretations(self, points):
+        model = self.env.ctx.model
+        for i,point in enumerate(points):
+            for value, abstract, src in self.endpoints():
+                x_dist, y_dist = (value - point).map(abs)
+                precedence = (x_dist, y_dist, i)
+                interpretation = abstract - model[abstract] + point.map(math.floor)
+                yield precedence, interpretation, (i,src)
 
 class GJumps(Splittable):
     def __init__(self, gui, coor, jumps, layer = 0):
@@ -120,7 +113,7 @@ class GJumps(Splittable):
             if n > 1:
                 label = GText(str(n), self.layer)
                 label.scale(0.7 / label.bounding_box.height)
-                label.move_center_to(split + l/2, 0.5)
+                label.move_center_to(ArithPair(split + l/2, 0.5))
                 self.labels.append(label)
 
         self.raw_bounding_box = BoundingBox(1,0,0,self.length)
@@ -171,10 +164,9 @@ class GJumps(Splittable):
         # print('Left:', jumps0)
         # print('Right:', jumps1)
         # print()
-        x,y = self.coor_abstract
         return (
-            GJumps(self.gui, (x,y), jumps0),
-            GJumps(self.gui, (x+jumps0.length,y), jumps1),
+            GJumps(self.gui, self.coor_abstract, jumps0),
+            GJumps(self.gui, self.coor_abstract.x_shift(jumps0.length), jumps1),
         )
 
     def join_raw(self, other):
@@ -281,7 +273,7 @@ class GMines(Splittable):
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
-            x2,_ = self.gui.point_interpretation(vx+n-0.5, vy)
+            (x2,_),_ = self.gui.point_interpretation(self.coor.x_shift(n-0.5))
             local_split = x2+(1-x)
             for ini_part in self.mines.subsequences[:index]:
                 local_split = local_split - ini_part.length
@@ -296,7 +288,10 @@ class GMines(Splittable):
         # print()
         self.gui.save_side_goals()
         self.gui.model_updated()
-        return GMines(self.gui, (x,y), mines0), GMines(self.gui, (x+mines0.length,y), mines1)
+        return (
+            GMines(self.gui, ArithPair(x,y), mines0),
+            GMines(self.gui, ArithPair(x+mines0.length,y), mines1),
+        )
 
     def join_raw(self, other):
         # print('Left:', self.mines)
@@ -304,6 +299,91 @@ class GMines(Splittable):
         res = GMines(self.gui, self.coor_abstract, self.mines + other.mines)
         # print('Join:', res.mines)
         return res
+
+    def filter(self, f):
+        x,y = self.coor_abstract
+        res = [([], x)]
+        for part in self.mines.subsequences:
+            x += part.length
+            if not f(part):
+                res.append(([], x))
+            else:
+                res[-1][0].append(part)
+        res = [(parts, x) for (parts, x) in res if len(parts) > 0]
+        res = [
+            GMines(self.gui, ArithPair(x,y), MineField.concat(*parts))
+            for parts,x in res
+        ]
+        return res
+
+class ObjGrasp:
+    def __init__(self, gui, objs, coor, ori_selection = set()):
+        self.gui = gui
+        self.objs = objs
+        self.coor = coor
+        self.last_match = []
+        self.ori_selection = ori_selection
+        self.moved = False
+
+    def move_coor(self, coor):
+        shift = (coor - self.coor + ArithPair(0.5, 0.5)).map(math.floor)
+        if shift == ArithPair(0,0):
+            return False
+
+        grasp_points = itertools.chain.from_iterable(
+            obj.endpoints()
+            for obj in self.objs
+        )
+        grasp_points = [
+            (coor + shift, abstract, src)
+            for coor, abstract, src in grasp_points
+        ]
+        grasp_points.sort(
+            key = lambda p: (p[0].x - coor.x)**2 + (p[0].y - coor.y)**2,
+        )
+        grasp_points_vals = [p[0] for p in grasp_points]
+        abstract, (i,src) = self.gui.points_interpretation(
+            grasp_points_vals,
+            skip = set(self.objs)
+        )
+        if src is not None:
+            _, rel_abstract, src2 = grasp_points[i]
+            self.last_match = [src, src2]
+            # print("abstract:", abstract)
+            # print("rel_abstract:", rel_abstract)
+            abstract_shift = abstract - rel_abstract
+            # correct value (offset could have messed it up)
+            abstract_shift = abstract_shift - self.gui.env.ctx.model[abstract_shift] + shift
+        else:
+            abstract_shift = shift
+        for obj in self.objs:
+            obj.translate(abstract_shift)
+        self.coor = self.coor + shift
+        self.moved = True
+        return True
+
+    def draw_match(self, cr):
+        for obj,side in self.last_match:
+            cr.save()
+            cr.translate(*obj.coor)
+            if isinstance(obj, GMines):
+                cr.translate(-0.5, -1)
+            if side:
+                cr.translate(obj.length, 0)
+                cr.scale(-1,1)
+            cr.rectangle(0,0,0.2,1)
+
+            pattern = cairo.LinearGradient(0,0,0.2,0) 
+            pattern.add_color_stop_rgba(0, 0, 1, 0, 1)   
+            pattern.add_color_stop_rgba(1, 0, 1, 0, 0)
+            cr.set_source(pattern)
+
+            cr.fill()
+            cr.restore()
+
+    def revert_selection(self):
+        if self.moved:
+            self.gui.selection = self.ori_selection
 
 class GrasshopperGui(Gtk.Window):
 
@@ -345,63 +425,50 @@ class GrasshopperGui(Gtk.Window):
 
         self.set_title("Grasshopper GUI")
         self.resize(*win_size)
-        self.win_size = win_size
+        self.win_size = ArithPair(*win_size)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", Gtk.main_quit)
         self.show_all()
 
         self.scale = 50
-        self.shift = (-3,0)
+        self.shift = ArithPair(-3,0)
 
         self.objects = [
-            GJumps(self, (TermInt(-1),TermInt(0)), jumps),
-            GMines(self, (TermInt(0),TermInt(0)), mines),
+            GJumps(self, ArithPair(TermInt(-1),TermInt(0)), jumps),
+            GMines(self, ArithPair(TermInt(0),TermInt(0)), mines),
         ]
         self.ctx_to_objects = dict()
 
     def update_win_size(self):
-        self.win_size = (self.darea.get_allocated_width(), self.darea.get_allocated_height())
+        self.win_size = ArithPair(
+            self.darea.get_allocated_width(),
+            self.darea.get_allocated_height(),
+        )
 
     @property
     def win_width(self):
-        return self.win_size[0]
+        return self.win_size.x
     @property
     def win_height(self):
-        return self.win_size[1]
+        return self.win_size.y
     @property
     def sidebar_width(self):
         return self.sidebar.bounding_box.width * self.win_height
 
     def pixel_to_coor(self, pixel):
-        px,py = pixel
-        w,h = self.win_size
-        sx,sy = self.shift
-        x = (px - w/2) / self.scale - sx
-        y = (h/2 - py) / self.scale - sy
-        return (x,y)
+        return (pixel - self.win_size/2).y_flip() / self.scale - self.shift
     def coor_to_pixel(self, pos):
-        w,h = self.win_size
-        sx,sy = self.shift
-        x,y = pos
-        x = float(x)
-        y = float(y)
-        px = (x + sx) * self.scale + w/2
-        py = h/2 - (y + sy) * self.scale
-        return px,py
+        return (pos + self.shift).y_flip() * self.scale + self.win_size/2
     def set_shift(self, pixel, coor):
-        w,h = self.win_size
-        px,py = pixel
-        x,y = coor
-        sx = (px - w/2) / self.scale - x
-        sy = (h/2 - py) / self.scale - y
-        self.shift = sx,sy
+        self.shift = (pixel - self.win_size/2).y_flip() / self.scale - coor
 
     def on_scroll(self,w,e):
-        coor = self.pixel_to_coor((e.x, e.y))
+        pixel = ArithPair(e.x, e.y)
+        coor = self.pixel_to_coor(pixel)
         if e.direction == Gdk.ScrollDirection.DOWN: self.scale *= 0.9
         elif e.direction == Gdk.ScrollDirection.UP: self.scale /= 0.9
         # print("zoom {}".format(self.scale))
-        self.set_shift((e.x, e.y), coor)
+        self.set_shift(pixel, coor)
         self.darea.queue_draw()
 
     def add_object(self, obj):
@@ -415,14 +482,13 @@ class GrasshopperGui(Gtk.Window):
             if obj not in removed
         ]
 
-    def grasp_objects(self, objs, x,y):
-        self.obj_grasp = []
-        for obj in objs:
-            cx,cy = obj.coor
-            self.obj_grasp.append((obj, x-cx, y-cy))
+    def grasp_objects(self, objs, coor):
+        ori_selection = self.selection
+        self.selection = set(objs)
+        self.obj_grasp = ObjGrasp(self, objs, coor, ori_selection = ori_selection)
 
-    def start_selection(self, x,y, keep = False):
-        self.select_grasp = (x,y), (x,y)
+    def start_selection(self, coor, keep = False):
+        self.select_grasp = coor, coor
         if not keep: self.selection = set()
         self.darea.queue_draw()
     def select_bounding_box(self):
@@ -431,36 +497,36 @@ class GrasshopperGui(Gtk.Window):
             for obj in self.selection
         )
 
-    def get_object(self, x,y):
+    def get_object(self, coor):
         for obj in reversed(self.objects):
-            if obj.bounding_box.contains(x,y):
+            if obj.bounding_box.contains(coor):
                 return obj
         return None
     
     def on_button_press(self, w, e):
+        pixel = ArithPair(e.x, e.y)
         if e.type != Gdk.EventType.BUTTON_PRESS: return
         if e.button == 1 and (e.state & Gdk.ModifierType.SHIFT_MASK):
-            self.start_selection(*self.pixel_to_coor((e.x, e.y)), keep = True)
+            self.start_selection(self.pixel_to_coor(pixel), keep = True)
         elif e.button == 1:
-            x,y = self.pixel_to_coor((e.x, e.y))
+            coor = self.pixel_to_coor(pixel)
             for obj in reversed(self.objects):
-                if obj not in self.selection and obj.bounding_box.contains(x,y):
-                    self.selection = set([obj])
-                    self.grasp_objects([obj], x,y)
+                if obj not in self.selection and obj.bounding_box.contains(coor):
+                    self.grasp_objects([obj], coor)
                     self.darea.queue_draw()
                     break
             else:
-                if self.select_bounding_box().contains(x,y):
-                    self.grasp_objects(self.selection, x,y)
+                if self.select_bounding_box().contains(coor):
+                    self.grasp_objects(self.selection, coor)
                 else:
-                    self.start_selection(x,y)
+                    self.start_selection(coor)
         elif e.button == 2:
-            self.mb_grasp = self.pixel_to_coor((e.x, e.y))
+            self.mb_grasp = self.pixel_to_coor(pixel)
         elif e.button == 3:
-            x,y = self.pixel_to_coor((e.x, e.y))
-            obj = self.get_object(x,y)
+            coor = self.pixel_to_coor(pixel)
+            obj = self.get_object(coor)
             if obj is not None:
-                n = int(math.floor(x-obj.bounding_box.left+0.5))
+                n = int(math.floor(coor.x-obj.bounding_box.left+0.5))
                 if n == 0: # join left
                     for obj2 in self.objects:
                         res = obj2.join(obj)
@@ -485,18 +551,19 @@ class GrasshopperGui(Gtk.Window):
                         self.darea.queue_draw()
 
     def on_button_release(self, w, e):
+        pixel = ArithPair(e.x, e.y)
         if self.select_grasp is not None:
             select_box = BoundingBox.from_corners(*self.select_grasp)
             selection = set()
             for obj in self.objects:
-                if select_box.contains(*obj.coor):
+                if select_box.contains(obj.coor):
                     selection.add(obj)
             self.select_grasp = None
             if e.state & Gdk.ModifierType.SHIFT_MASK:
                 if not selection:
-                    x,y = self.pixel_to_coor((e.x, e.y))
+                    coor = self.pixel_to_coor(pixel)
                     for obj in reversed(self.objects):
-                        if obj.bounding_box.contains(x,y):
+                        if obj.bounding_box.contains(coor):
                             selection.add(obj)
                             break
                 if all(obj in self.selection for obj in selection):
@@ -507,26 +574,29 @@ class GrasshopperGui(Gtk.Window):
                 self.selection = selection
             self.darea.queue_draw()
         if e.button == 1:
-            self.obj_grasp = None
+            if self.obj_grasp:
+                self.darea.queue_draw()
+                self.obj_grasp.revert_selection()
+                self.obj_grasp = None
         if e.button == 2:
             self.mb_grasp = None
 
     def on_motion(self,w,e):
+        pixel = ArithPair(e.x, e.y)
         if self.select_grasp is not None:
             corner1, corner2 = self.select_grasp
-            x,y = self.pixel_to_coor((e.x, e.y))
-            self.select_grasp = corner1, (x,y)
+            coor = self.pixel_to_coor(pixel)
+            self.select_grasp = corner1, coor
             self.darea.queue_draw()
         if e.state & Gdk.ModifierType.BUTTON2_MASK:
             if self.mb_grasp is None: return
-            self.set_shift((e.x, e.y), self.mb_grasp)
+            self.set_shift(pixel, self.mb_grasp)
             self.darea.queue_draw()
         elif e.state & Gdk.ModifierType.BUTTON1_MASK:
             if self.obj_grasp is None: return
-            for obj, gx, gy in self.obj_grasp:
-                x,y = self.pixel_to_coor((e.x, e.y))
-                obj.coor = (math.floor(x-gx+0.5), math.floor(y-gy+0.5))
-            self.darea.queue_draw()
+            coor = self.pixel_to_coor(pixel)
+            if self.obj_grasp.move_coor(coor):
+                self.darea.queue_draw()
 
     def on_key_press(self,w,e):
         keyval = e.keyval
@@ -566,6 +636,8 @@ class GrasshopperGui(Gtk.Window):
             self.undeconstruct_selected()
         elif keyval_name == 'a':
             self.pop_avoiding_selected()
+        elif keyval_name == 'r':
+            self.reset_mines()
 
         # debug commands
         elif keyval_name == 'u':
@@ -573,10 +645,8 @@ class GrasshopperGui(Gtk.Window):
             print("model updated")
         elif keyval_name == 'p':
             for obj in self.objects:
-                print(type(obj))
+                print(obj)
                 print('coor', obj.coor)
-                print('coor_start:', obj.coor_start)
-                print('coor_base:', obj.coor_base)
                 print('coor_abstract:', obj.coor_abstract)
                 print()
             self.env.ctx.model.show()
@@ -598,7 +668,7 @@ class GrasshopperGui(Gtk.Window):
         cr.fill()
 
         cr.save()
-        cr.translate(*self.coor_to_pixel((0,0)))
+        cr.translate(*self.coor_to_pixel(ArithPair(0,0)))
         cr.scale(self.scale, -self.scale)
 
         # draw selection
@@ -619,6 +689,9 @@ class GrasshopperGui(Gtk.Window):
             cr.rectangle(x1,y2,x2-x1,y1-y2)
             self.select_style.paint(cr)
 
+        if self.obj_grasp is not None:
+            self.obj_grasp.draw_match(cr)
+
         # draw objects
         for layer in range(3):
             for obj in self.objects:
@@ -636,7 +709,7 @@ class GrasshopperGui(Gtk.Window):
         text = GText("Problem Solved!", 0)
         text.fit_to(screen_box)
         text.scale(0.8)
-        text.move_center_to(*screen_box.center)
+        text.move_center_to(screen_box.center)
         cr.scale(1,-1)
         text.draw(cr, 0)
 
@@ -651,7 +724,9 @@ class GrasshopperGui(Gtk.Window):
         if self.env.ctx in self.ctx_to_objects:
             self.objects = self.ctx_to_objects[self.env.ctx]
 
-    def point_interpretation(self, x, y, skip = ()):
+    def point_interpretation(self, coor, skip = ()):
+        return self.points_interpretation([(coor)], skip)
+    def points_interpretation(self, points, skip):
         if skip:
             objects = [
                 obj for obj in self.objects
@@ -660,15 +735,59 @@ class GrasshopperGui(Gtk.Window):
         else:
             objects = self.objects
         if not objects:
-            return TermInt(math.floor(x)), TermInt(math.floor(y))
-        _, res = min(
+            return points[0], (0,None)
+        _, res, src = min(
             itertools.chain.from_iterable(
-                obj.point_interpretations(x,y)
+                obj.points_interpretations(points)
                 for obj in objects
             ),
             key = lambda x: x[0]
         )
-        return res
+        return res, src
+
+    def reset_mines(self):
+        self.selection = set()
+        _, subst = extract_subst(self.env.ctx.raw_facts)
+        mines = subst[self.env.mines]
+        part_to_remain = defaultdict(int)
+        for part in mines.subsequences:
+            part_to_remain[part] += 1
+
+        part_to_found = defaultdict(int)
+        def discard_main_part(part):
+            if part_to_remain[part] == 0:
+                return True
+            part_to_remain[part] -= 1
+            part_to_found[part] += 1
+            return False
+
+        rem_mines = []
+        for obj in self.objects:
+            if not isinstance(obj, GMines): continue
+            rem_mines.extend(obj.filter(discard_main_part))
+        self.objects = [
+            obj for obj in self.objects
+            if not isinstance(obj, GMines)
+        ]
+
+        def keep_found(part):
+            if part_to_found[part] == 0:
+                return False
+            part_to_found[part] -= 1
+            return True
+        main_gmines = GMines(
+            self,
+            ArithPair(TermInt(0),TermInt(0)),
+            mines
+        )
+
+        if any(obj.y == 0 for obj in rem_mines):
+            for obj in rem_mines:
+                obj.translate(ArithPair(0,-1))
+
+        self.objects.extend(rem_mines)
+        self.objects.extend(main_gmines.filter(keep_found))
+        self.darea.queue_draw()
 
     ########
     # Model
@@ -737,8 +856,7 @@ class GrasshopperGui(Gtk.Window):
     def pop_max(self, jumps):
         J, rest = self.env.pop_max_jump(jumps.jumps)
         J_gr = GJumps(self, jumps.coor_abstract, Jumps(J))
-        x,y = jumps.coor_abstract
-        rest_gr = GJumps(self, (x+J.length, y), rest)
+        rest_gr = GJumps(self, jumps.coor_abstract.x_shift(J.length), rest)
         self.save_side_goals()
         self.model_updated()
         return J_gr, rest_gr
@@ -764,8 +882,7 @@ class GrasshopperGui(Gtk.Window):
     def pop_avoiding(self, gjumps, gmines):
         jump, jumpsr = self.env.pop_avoiding_jump(gjumps.jumps, gmines.mines)
         gjump = GJumps(self, gjumps.coor_abstract, Jumps(jump))
-        x,y = gjumps.coor_abstract
-        gjumpsr = GJumps(self, (x+jump.length, y), jumpsr)
+        gjumpsr = GJumps(self, gjumps.coor_abstract + ArithPair(jump.length, 0), jumpsr)
         self.save_side_goals()
         self.model_updated()
         return gjump, gjumpsr
@@ -832,10 +949,9 @@ class GrasshopperGui(Gtk.Window):
             mines0.length > 0,
             mines1.length > 0,
         )
-        x,y = gmines.coor_abstract
-        gmines0 = GMines(self, (x, y), mines0)
-        gmine = GMines(self, (x+mines0.length, y), MineField([True]))
-        gmines1 = GMines(self, (x+mines0.length+1, y), mines1)
+        gmines0 = GMines(self, gmines.coor_abstract, mines0)
+        gmine = GMines(self, gmines.coor_abstract.x_shift(mines0.length), MineField([True]))
+        gmines1 = GMines(self, gmines.coor_abstract.x_shift(mines0.length+1), mines1)
         self.save_side_goals()
         self.model_updated()
         return gmines0, gmine, gmines1
@@ -847,9 +963,8 @@ class GrasshopperGui(Gtk.Window):
         if self.env.ctx.model[jumps.length].value() == 0:
             return None
         jump, jumpsr = self.env.pop_first_jump(jumps)
-        x,y = gjumps.coor_abstract
         gjump = GJumps(self, gjumps.coor_abstract, Jumps(jump))
-        gjumpsr = GJumps(self, (x+jump.length, y), jumpsr)
+        gjumpsr = GJumps(self, gjumps.coor_abstract.x_shift(jump.length), jumpsr)
         self.save_side_goals()
         self.model_updated()
         return gjump, gjumpsr
@@ -864,9 +979,8 @@ class GrasshopperGui(Gtk.Window):
 
     def empty_mines(self, gmines):
         mines = gmines.mines
-        x,y = gmines.coor_abstract
-        res = GMines(self, (x, y), mines.empty_copy)
-        gmines.translate(0,-1)
+        res = GMines(self, gmines.coor_abstract, mines.empty_copy)
+        gmines.translate(ArithPair(0,-1))
         return res
 
     def cut_jumps_selected(self):
@@ -876,23 +990,22 @@ class GrasshopperGui(Gtk.Window):
         if not isinstance(jumps, GJumps): return
         if not isinstance(jumps.jumps, Jumps): return
         if not isinstance(mines, GMines): return
-        res = self.cut_jumps(jumps, mines.coor_abstract[0])
+        res = self.cut_jumps(jumps, mines.coor_abstract.x)
         if res is None: return
         self.remove_objects(jumps)
         for res_obj in res: self.add_object(res_obj)
         self.darea.queue_draw()
 
     def cut_jumps(self, gjumps, pos):
-        pos = pos - gjumps.coor_abstract[0] - 1
+        pos = pos - gjumps.coor_abstract.x - 1
         jumps0, jump, jumps1 = self.env.split_jump_landings(gjumps.jumps, pos)
         self.env.ctx.add_model_constraints(
             jumps0.number > 0,
             jumps1.number > 0,
         )
-        x,y = gjumps.coor_abstract
-        gjumps0 = GJumps(self, (x, y), jumps0)
-        gjump = GJumps(self, (x+jumps0.length, y), Jumps([jump]))
-        gjumps1 = GJumps(self, (x+jumps0.length+jump.length, y), jumps1)
+        gjumps0 = GJumps(self, gjumps.coor_abstract, jumps0)
+        gjump = GJumps(self, gjumps.coor_abstract.x_shift(jumps0.length), Jumps([jump]))
+        gjumps1 = GJumps(self, gjumps.coor_abstract.x_shift(jumps0.length+jump.length), jumps1)
         self.save_side_goals()
         self.model_updated()
         return gjumps0, gjump, gjumps1
@@ -916,8 +1029,8 @@ class GrasshopperGui(Gtk.Window):
         gmines_un = GMines(self, gmines1.coor_abstract, mines_un)
         self.save_side_goals()
         self.model_updated()
-        gmines1.translate(0,-1)
-        gmines2.translate(0,-1)
+        gmines1.translate(ArithPair(0,-1))
+        gmines2.translate(ArithPair(0,-1))
         return gmines_un
 
     def undeconstruct_selected(self):

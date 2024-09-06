@@ -1,6 +1,7 @@
 import math
 import cairo
 import random
+from arith_pair import ArithPair
 
 class Style:
     def __init__(self, fill = None, stroke = None, stroke_width = 0.1, dash = None):
@@ -42,16 +43,16 @@ class BoundingBox:
             self.top, self.bottom, self.left, self.right
         )
 
-    def contains(self, x,y):
-        return self.left < x < self.right and self.top > y > self.bottom
-    def translate(self, x,y):
-        if x == 0 and y == 0: return self
+    def contains(self, coor):
+        return self.left < coor.x < self.right and self.top > coor.y > self.bottom
+    def translate(self, shift):
+        if shift.x == 0 and shift.y == 0: return self
         elif self.is_empty: return self
         return BoundingBox(
-            top = self.top+y,
-            bottom = self.bottom+y,
-            left = self.left+x,
-            right = self.right+x
+            top = self.top+shift.y,
+            bottom = self.bottom+shift.y,
+            left = self.left+shift.x,
+            right = self.right+shift.x
         )
     def scale(self, scale):
         if scale == 1: return self
@@ -81,7 +82,7 @@ class BoundingBox:
         return self.top - self.bottom
     @property
     def center(self):
-        return (self.left+self.right)/2, (self.top+self.bottom)/2
+        return ArithPair((self.left+self.right)/2, (self.top+self.bottom)/2)
     @property
     def corners(self):
         return (
@@ -132,20 +133,20 @@ class BoundingBox:
 class GObject:
     def __init__(self):
         self.parent = None
-        self.coor = (0,0)
+        self.coor = ArithPair(0,0)
         self.scale_coef = 1
     @property
     def bounding_box(self):
-        return self.raw_bounding_box.scale(self.scale_coef).translate(*self.coor)
+        return self.raw_bounding_box.scale(self.scale_coef).translate(self.coor)
     @property
     def x(self):
-        return self.coor[0]
+        return self.coor.x
     @property
     def y(self):
-        return self.coor[1]
+        return self.coor.y
 
-    def translate(self, x,y):
-        self.coor = (self.coor[0]+x, self.coor[1]+y)
+    def translate(self, shift):
+        self.coor = self.coor + shift
     def scale(self, scale_coef):
         self.scale_coef *= scale_coef
     def fit_to(self, bounding_box):
@@ -153,10 +154,10 @@ class GObject:
             bounding_box.width / self.raw_bounding_box.width,
             bounding_box.height / self.raw_bounding_box.height,
         )
-        self.move_center_to(*bounding_box.center)
-    def move_center_to(self, x2,y2):
-        x1,y1 = self.raw_bounding_box.center
-        self.coor = (x2-x1*self.scale_coef, y2-y1*self.scale_coef)
+        self.move_center_to(bounding_box.center)
+    def move_center_to(self, coor2):
+        coor1 = self.raw_bounding_box.center
+        self.coor = coor2 - coor1*self.scale_coef
 
     def parent_with_type(self, t):
         res = self.parent
@@ -166,27 +167,22 @@ class GObject:
             res = res.parent
         return res
     def get_parent_shift_scale(self, parent):
-        x = 0
-        y = 0
+        coor = ArithPair(0,0)
         obj = self
         scale = 1
         while obj != parent:
             if obj is None: raise Exception("Parent not found")
             scale *= obj.scale_coef
-            x *= obj.scale_coef
-            y *= obj.scale_coef
-            x += obj.coor[0]
-            y += obj.coor[1]
+            coor = coor * obj.scale_coef
+            coor = coor + obj.coor
             obj = obj.parent
-        return (x,y), scale
+        return coor, scale
     def parent_coor(self, coor, parent = None):
-        x,y = coor
-        (shx, shy), scale = self.get_parent_shift_scale(parent)
-        return (x*scale + shx, y*scale + shy)
+        shift, scale = self.get_parent_shift_scale(parent)
+        return coor*scale + shift
     def child_coor(self, coor, parent = None):
-        x,y = coor
-        (shx, shy), scale = self.get_parent_shift_scale(parent)
-        return ((x-shx)/scale, (y-shy)/scale)
+        shift, scale = self.get_parent_shift_scale(parent)
+        return (coor-shift)/scale
     def bb_from_parent(self, parent = None):
         shift, scale = self.get_parent_shift_scale(parent)
         return self.raw_bounding_box.scale(scale).translate(*shift)

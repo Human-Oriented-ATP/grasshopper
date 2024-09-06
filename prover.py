@@ -21,6 +21,12 @@ class FailedProof(Exception):
             lines.append("Model:")
             for v,value in self.model.base_dict.items():
                 lines.append(f"  {v} = {value}")
+                if v.f is not None:
+                    v_simp = v.f(*self.model[v.args])
+                else:
+                    v_simp = v
+                if v != v_simp:
+                    lines.append(f"[simp]  {v_simp} = {value}")
         return '\n'.join(lines)
         
     def __str__(self):

@@ -313,8 +313,8 @@ class GrasshopperEnv:
                 if e.model is not None:
                     raise FailedProofDisjoint(
                         e.model,
-                        subst[self.mines],
                         subst[jumps.landings],
+                        subst[self.mines],
                         boom,
                     ) from e
                 else:
@@ -364,12 +364,19 @@ class GrasshopperEnv:
         return J, jumpsr
 
     def pop_first_jump(self, jumps):
+        return self.pop_border_jump(jumps, True)
+    def pop_last_jump(self, jumps):
+        return self.pop_border_jump(jumps, False)
+
+    def pop_border_jump(self, jumps, first):
         assert isinstance(jumps, Jumps) and jumps.is_var, jumps
         self.prove(jumps.number > 0)
         J = Jump.fixed_var(jumps.var_name+'0')
         jumpsr = Jumps.fixed_var(jumps.var_name+'r')
-        self.ctx.deconstruct(jumps, Jumps.concat(J, jumpsr))
-        return J, jumpsr
+        if first: res = J, jumpsr
+        else: res = jumpsr, J
+        self.ctx.deconstruct(jumps, Jumps.concat(*res))
+        return res
 
     def split_mines(self, mines, i):
         assert isinstance(mines, MineField) and mines.is_var
@@ -401,13 +408,19 @@ class GrasshopperEnv:
         return jumps_ih
 
     def split_first_mine(self, mines):
+        return self.split_border_mine(mines, True)
+    def split_last_mine(self, mines):
+        return self.split_border_mine(mines, False)
+
+    def split_border_mine(self, mines, first):
         assert isinstance(mines, MineField) and mines.is_var
         self.prove(mines.count > 0)
         
         mines0 = MineField.fixed_var(mines.var_name+'0')
         mines1 = MineField.fixed_var(mines.var_name+'1')
         self.ctx.deconstruct(mines, MineField(mines0, True, mines1))
-        self.ctx.add_fact(equals(mines0.count, 0))
+        if first: self.ctx.add_fact(equals(mines0.count, 0))
+        else: self.ctx.add_fact(equals(mines1.count, 0))
         return mines0, mines1
 
     def split_jump_landings(self, jumps, i):
