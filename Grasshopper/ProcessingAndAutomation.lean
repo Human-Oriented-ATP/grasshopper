@@ -65,6 +65,98 @@ elab "substitute" : tactic => withMainContext do
       liftMetaTactic1 (subst · decl.fvarId)
     catch _ => continue
 
+elab "generate_congruence_theorem" c:"checkTypes"? t:ident : tactic => withMainContext do
+  let check? := c.isSome
+  let guardExprType (e : Expr) : TacticM Unit := do
+    if check? then
+      guard <| e.constName ∈ [``Int, ``Nat, ``Bool]
+  let fn ← Term.elabTerm t none
+  let stmt ← inferType fn
+  let (mvars, _, conclusion) ← forallMetaTelescope stmt
+  guardExprType conclusion
+  let (mvars', _, conclusion') ← forallMetaTelescope stmt
+  guardExprType conclusion'
+  let hyps ← Array.zip mvars mvars' |>.mapM fun (var, var') ↦ do
+    guardExprType =<< inferType var
+    guardExprType =<< inferType var'
+    let eqn ← mkEq var var'
+    mkFreshExprMVar eqn
+  let congrThm ← mkForallFVars (mvars ++ mvars') <| ← mkForallFVars (binderInfoForMVars := .default) hyps (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
+  let congrThmStx ← PrettyPrinter.delab congrThm
+  evalTactic =<< `(tactic| have $(mkIdent (t.getId ++ `congr)) : $congrThmStx := by intros; substitute; rfl)
+
+section Congruence
+
+def Lean.Expr.isBoolOrInt (e : Expr) : MetaM Bool := do
+  let type ← inferType e
+  return type.isConstOf `Bool || type.isConstOf `Int
+
+partial def Lean.Expr.generateSkeleton (e : Expr) : StateT (Array Expr × Nat) MetaM Expr := do
+  guard <| ← e.isBoolOrInt
+  e.withApp fun f args => do
+    let args' ← args.mapM fun arg ↦ do
+      if ← arg.isBoolOrInt then
+        modifyGet fun ⟨es, n⟩ ↦
+          (.fvar ⟨.num `skeleton_var n⟩, ⟨es.push arg, n.succ⟩)
+      else
+        arg.generateSkeleton
+    return mkAppN f args'
+
+partial def Lean.Expr.collectBoolOrIntSubExprs (e : Expr) : StateT (Array Expr) MetaM Unit := do
+  e.withApp fun _ args => do
+    for arg in args do
+      if ← arg.isBoolOrInt then
+        modify (·.push arg)
+      arg.collectBoolOrIntSubExprs
+
+def Lean.Expr.generateSkeletonMap (e : Expr) : MetaM <| HashMap Expr (Array (Array Expr)) := do
+  let e ← reduce <| ← instantiateMVars e
+  let (_, subExprs) ← (collectBoolOrIntSubExprs e).run #[]
+  subExprs.foldlM (init := {}) fun m e ↦ do
+    let (skeleton, ⟨args, _⟩) ← generateSkeleton e |>.run (.empty, 0)
+    match m.find? skeleton with
+    | some exprs => return m.insert skeleton (exprs.push args)
+    | none => return m.insert skeleton #[args]
+
+partial def generateSkeletonMap : TacticM <| HashMap Expr (Array (Array Expr)) := withMainContext do
+  (← getLCtx).foldlM (init := {}) fun m decl ↦ do
+    let e := decl.type
+    let m' ← e.generateSkeletonMap
+    return m.mergeWith (fun _ ↦ Array.append) m'
+
+def generateConguenceLemmas : TacticM Unit := withMainContext do
+  (← generateSkeletonMap).forM generateConguenceLemmasAux
+where
+  generateConguenceLemmasAux (skeleton : Expr) (exprs : Array (Array Expr)) : TacticM Unit := withMainContext do
+    let congrLemma ← generateConguenceLemma <| ← abstractSkeleton skeleton
+    for args in exprs do
+      for args' in exprs do
+        unless args == args' do
+          let congrLemmaInst ← mkAppM' congrLemma (args ++ args')
+          let congrLemmaInstStx ← PrettyPrinter.delab congrLemmaInst
+          evalTactic =<< `(tactic| have := $congrLemmaInstStx)
+  abstractSkeleton (skeleton : Expr) : MetaM Expr := do
+    let (_, ⟨_, _, fvarIds⟩) ← skeleton.collectFVars |>.run {}
+    mkLambdaFVars (fvarIds.map .fvar) skeleton
+  generateConguenceLemma (fn : Expr) : MetaM Expr := do
+    let stmt ← inferType fn
+    let (mvars, _, conclusion) ← forallMetaTelescope stmt
+    guard <| ← conclusion.isBoolOrInt
+    let (mvars', _, conclusion') ← forallMetaTelescope stmt
+    guard <| ← conclusion'.isBoolOrInt
+    let hyps ← Array.zip mvars mvars' |>.mapM fun (var, var') ↦ do
+      guard <| ← var.isBoolOrInt
+      guard <| ← var'.isBoolOrInt
+      let eqn ← mkEq var var'
+      mkFreshExprMVar eqn
+    let congrThm ← mkForallFVars (mvars ++ mvars')
+              <| ← mkForallFVars (binderInfoForMVars := .default) hyps (← mkEq (← mkAppM' fn mvars) (← mkAppM' fn mvars'))
+    return congrThm
+
+end Congruence
+
+elab "congruence" : tactic => do generateConguenceLemmas
+
 elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| by_contra) -- negating the goal and adding it as a hypothesis
   evalTactic =<< `(tactic| push_neg)
