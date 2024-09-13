@@ -1034,17 +1034,34 @@ class GrasshopperGui(Gtk.Window):
         return gmines_un
 
     def undeconstruct_selected(self):
-        if len(self.selection) != 1: return
-        [gobj] = self.selection
-        if isinstance(gobj, GJumps): obj = gobj.jumps
-        elif isinstance(gobj, GMines): obj = gobj.mines
-        else: return
+        has_jump_set = any(
+            isinstance(obj, GJumps) and isinstance(obj.jumps, JumpSet)
+            for obj in self.selection
+        )
+        if has_jump_set:
+            if not all(isinstance(obj, GJumps) for obj in self.selection):
+                return
+            parts = []
+            for gobj in self.selection:
+                if isinstance(gobj.jumps, JumpSet):
+                    parts.append(gobj.jumps)
+                else:
+                    parts.append(gobj.jumps.s)
+            obj = JumpSet.merge(*parts)
+        elif len(self.selection) == 1:
+            [gobj] = self.selection
+            if isinstance(gobj, GJumps): obj = gobj.jumps
+            elif isinstance(gobj, GMines): obj = gobj.mines
+            else: return
+        else:
+            return
         res = self.env.undeconstruct(obj)
         if res is None: return
         if isinstance(res, (Jumps, JumpSet)): gtype = GJumps
         elif isinstance(res, MineField): gtype = GMines
-        gres = gtype(self, gobj.coor_abstract, res)
-        self.remove_objects(gobj)
+        gobj0 = min(self.selection, key = lambda obj: obj.x)
+        gres = gtype(self, gobj0.coor_abstract, res)
+        self.remove_objects(*self.selection)
         self.add_object(gres)
         self.darea.queue_draw()
 
