@@ -27,5 +27,7 @@ class ArithPair:
         return ArithPair(self.x, -self.y)
     def x_shift(self, x):
         return ArithPair(self.x+x, self.y)
+    def y_shift(self, y):
+        return ArithPair(self.x, self.y+y)
     def __str__(self):
         return f"ArithPair({self.x}, {self.y})"

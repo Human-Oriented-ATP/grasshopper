@@ -51,8 +51,6 @@ class Splittable(GObject):
         self.coor = self.env.ctx.model[self.coor_abstract].value()
 
     def endpoints(self):
-        ax,ay = self.coor_abstract
-        vx,xy = self.coor
         yield (
             self.coor.x_shift(self.x_offset),
             self.coor_abstract,
@@ -273,7 +271,16 @@ class GMines(Splittable):
             part = self.mines.parts[index]
             assert isinstance(part, MineField)
             assert part.is_var
-            (x2,_),_ = self.gui.point_interpretation(self.coor.x_shift(n-0.5))
+            if isinstance(self.gui.obj_grasp, SplitSelection) and self.gui.obj_grasp.gmines == self and self.gui.obj_grasp.n and self.gui.obj_grasp.pos_match is not None:
+                (x2,_),_ = self.gui.obj_grasp.pos_match
+            else:
+                if self.gui.obj_grasp is not None:
+                    self.gui.obj_grasp.confirm()
+                self.gui.obj_grasp = SplitSelection(self.gui, self, self.coor.x_shift(n-0.5), n)
+                self.gui.darea.queue_draw()
+                return
+            # TODO: postpone decision
+            # (x2,_),_ = self.gui.point_interpretation(self.coor.x_shift(n-0.5))
             local_split = x2+(1-x)
             for ini_part in self.mines.subsequences[:index]:
                 local_split = local_split - ini_part.length
@@ -315,6 +322,24 @@ class GMines(Splittable):
             for parts,x in res
         ]
         return res
+
+def draw_endpoint(cr, obj, side):
+    cr.save()
+    cr.translate(*obj.coor)
+    if isinstance(obj, GMines):
+        cr.translate(-0.5, -1)
+    if side:
+        cr.translate(obj.length, 0)
+        cr.scale(-1,1)
+    cr.rectangle(0,0,0.2,1)
+
+    pattern = cairo.LinearGradient(0,0,0.2,0) 
+    pattern.add_color_stop_rgba(0, 0, 1, 0, 1)   
+    pattern.add_color_stop_rgba(1, 0, 1, 0, 0)
+    cr.set_source(pattern)
+
+    cr.fill()
+    cr.restore()
 
 class ObjGrasp:
     def __init__(self, gui, objs, coor, ori_selection = set()):
@@ -364,26 +389,57 @@ class ObjGrasp:
 
     def draw_match(self, cr):
         for obj,side in self.last_match:
-            cr.save()
-            cr.translate(*obj.coor)
-            if isinstance(obj, GMines):
-                cr.translate(-0.5, -1)
-            if side:
-                cr.translate(obj.length, 0)
-                cr.scale(-1,1)
-            cr.rectangle(0,0,0.2,1)
+            draw_endpoint(cr, obj, side)
 
-            pattern = cairo.LinearGradient(0,0,0.2,0) 
-            pattern.add_color_stop_rgba(0, 0, 1, 0, 1)   
-            pattern.add_color_stop_rgba(1, 0, 1, 0, 0)
-            cr.set_source(pattern)
-
-            cr.fill()
-            cr.restore()
-
-    def revert_selection(self):
+    def confirm(self):
         if self.moved:
             self.gui.selection = self.ori_selection
+
+class SplitSelection:
+    def __init__(self, gui, gmines, pos, n):
+        self.gui = gui
+        self.gmines = gmines
+        self.n = n
+        self.pos = pos
+        interpretation, (_, src)= self.gui.point_interpretation(self.pos)
+        self.default_match = interpretation, src
+        self.pos_match = self.default_match
+    
+    def move_coor(self, coor):
+        if self.gmines.bounding_box.contains(coor) and abs(coor.x - self.pos.x) < 0.5:
+            pos_match = self.default_match
+        else:
+            pos_match = None
+            for obj in self.gui.objects:
+                if obj.bounding_box.contains(coor):
+                    val, abstract, src = min(
+                        obj.endpoints(),
+                        key = lambda vas: abs(vas[0].x - coor.x)
+                    )
+                    model = self.gui.env.ctx.model
+                    interpretation = abstract - model[abstract] + self.pos.map(math.floor)
+                    pos_match = interpretation, src
+                    break
+
+        if pos_match == self.pos_match: return False
+        self.pos_match = pos_match
+        return True
+
+    def draw_match(self, cr):
+        cr.move_to(*self.pos)
+        cr.line_to(*self.pos.y_shift(-1))
+        cr.set_line_width(0.2)
+        cr.set_source_rgb(0,1,0)
+        cr.stroke()
+        if self.pos_match is not None:
+            _, (obj,side) = self.pos_match
+            draw_endpoint(cr, obj, side)
+
+    def confirm(self):
+        if self.pos_match is not None:
+            res = self.gmines.split(self.n)
+            self.gui.remove_objects(self.gmines)
+            self.gui.add_objects(*res)
 
 class GrasshopperGui(Gtk.Window):
 
@@ -474,6 +530,9 @@ class GrasshopperGui(Gtk.Window):
     def add_object(self, obj):
         assert isinstance(obj, GObject)
         self.objects.append(obj)
+    def add_objects(self, *objs):
+        assert all(isinstance(obj, GObject) for obj in objs)
+        self.objects.extend(objs)
     def remove_objects(self, *removed):
         removed = set(removed)
         self.selection.difference_update(removed)
@@ -483,6 +542,7 @@ class GrasshopperGui(Gtk.Window):
         ]
 
     def grasp_objects(self, objs, coor):
+        if self.obj_grasp is not None: self.obj_grasp.confirm()
         ori_selection = self.selection
         self.selection = set(objs)
         self.obj_grasp = ObjGrasp(self, objs, coor, ori_selection = ori_selection)
@@ -547,7 +607,7 @@ class GrasshopperGui(Gtk.Window):
                     objs = obj.split(n)
                     if objs is not None:
                         self.remove_objects(obj)
-                        self.objects.extend(objs)
+                        self.add_objects(*objs)
                         self.darea.queue_draw()
 
     def on_button_release(self, w, e):
@@ -573,13 +633,12 @@ class GrasshopperGui(Gtk.Window):
             else:
                 self.selection = selection
             self.darea.queue_draw()
-        if e.button == 1:
-            if self.obj_grasp:
-                self.darea.queue_draw()
-                self.obj_grasp.revert_selection()
-                self.obj_grasp = None
         if e.button == 2:
             self.mb_grasp = None
+        elif self.obj_grasp:
+            self.darea.queue_draw()
+            self.obj_grasp.confirm()
+            self.obj_grasp = None
 
     def on_motion(self,w,e):
         pixel = ArithPair(e.x, e.y)
@@ -592,8 +651,7 @@ class GrasshopperGui(Gtk.Window):
             if self.mb_grasp is None: return
             self.set_shift(pixel, self.mb_grasp)
             self.darea.queue_draw()
-        elif e.state & Gdk.ModifierType.BUTTON1_MASK:
-            if self.obj_grasp is None: return
+        elif self.obj_grasp is not None:
             coor = self.pixel_to_coor(pixel)
             if self.obj_grasp.move_coor(coor):
                 self.darea.queue_draw()
@@ -785,8 +843,8 @@ class GrasshopperGui(Gtk.Window):
             for obj in rem_mines:
                 obj.translate(ArithPair(0,-1))
 
-        self.objects.extend(rem_mines)
-        self.objects.extend(main_gmines.filter(keep_found))
+        self.add_objects(*rem_mines)
+        self.add_objects(*main_gmines.filter(keep_found))
         self.darea.queue_draw()
 
     ########
