@@ -194,7 +194,7 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, so
         print(last_problem_index)
     if record_uflia:
         hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
-        record_grasshopper_task(self.facts, hammer_fname)
+        record_grasshopper_task(constraints, hammer_fname)
 
 # the list optional_constraints gets reduced to a satisfiable beginning
 def get_model(hard_constraints, optional_constraints, extra_terms = (), solver_cmd = default_solver, **kwargs):

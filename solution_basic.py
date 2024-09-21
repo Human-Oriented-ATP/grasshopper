@@ -1,4 +1,4 @@
-from logic import equals, MineField
+from logic import equals, MineField, Jumps
 from env import GrasshopperEnv
 import prover
 
@@ -6,14 +6,13 @@ def solution(env):
     jumps = env.jumps
     mines = env.mines
 
-    # mines are empty
-    env.split_case(equals(mines.count, 0))
-    jumpso = env.order_jumps(jumps)
-    env.solve_with_jumps(jumpso)
-
-    # mines are nonempty
     J, jumps = env.pop_max_jump(jumps)
 
+    # single jump
+    env.split_case(equals(jumps.number, 0))
+    env.solve_with_jumps(Jumps.concat(J))
+
+    # mines are nonempty
     mines0, mines1 = env.split_mines(mines, J.length)
     mines00, mines01 = env.split_mines(mines0, J.length-1)
 
@@ -23,7 +22,7 @@ def solution(env):
 
     # mine before the first jump
     # print("mine before the first jump")
-    env.split_case(~equals(mines0.count, 0))
+    env.split_case(mines1.count < jumps.number)
     jumpso = env.induction(jumps, mines1)
     env.solve_with_jumps(J + jumpso)
 
@@ -66,6 +65,6 @@ def solution(env):
     env.solve_with_jumps(J2 + J + jumpso)
 
 if __name__ == "__main__":
-    env = GrasshopperEnv(record_uflia = False, show_record_step = True)
+    env = GrasshopperEnv(record_uflia = True, show_record_step = True)
     solution(env)    
     env.check_solved()

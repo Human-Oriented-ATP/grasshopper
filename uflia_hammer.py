@@ -316,6 +316,11 @@ def _jump_over(a) -> MineField:
 def _landings(a) -> MineField:
     assert isinstance(a, Jumps)
     return None
+@term_fun
+def _subtract(a,b) -> JumpSet:
+    assert isinstance(a, JumpSet)
+    assert isinstance(b, JumpSet)
+    return None
 
 def binary_composer(empty, singleton, concat):
     def compose(*args):
@@ -340,6 +345,7 @@ function_replace_d = {
     MineField.concat : mines_compose,
     Jump.to_empty_minefield.fget : _jump_over,
     Jumps.landings.fget : _landings,
+    JumpSet.subtract: _subtract,
 }
 def replace_functions(term):
     if term.is_var: return term
@@ -417,6 +423,14 @@ def make_extra_axioms():
         ~_jump_over(JX)[X],
         equals(_jump_over(JX).length, JX.length - 1),
         equals(_jump_over(JX).count, 0),
+
+        # JumpSet.subtract
+        equals(_subtract(empty_jumpset, JSA), empty_jumpset),
+        equals(_subtract(JSA, empty_jumpset), JSA),
+        equals(_subtract(JSA, JSA), empty_jumpset),
+        equals(_subtract(JSA, _jumpset_merge(JSA,JSB)), empty_jumpset),
+        equals(_subtract(_jumpset_merge(JSA,JSB), JSA), JSB),
+        equals(_subtract(_jumpset_merge(JSA,JSB), _jumpset_merge(JSA,JSC)), JumpSet.subtract(JSB,JSC)),
     ]
     return extra_axioms
 
