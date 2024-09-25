@@ -163,8 +163,8 @@ elab _stx:"auto" : tactic => do
   evalTactic =<< `(tactic| add_theorems)
   evalTactic =<< `(tactic| substitute)
   withMainContext do
-    let forbidden := #[`_example, `grasshopper_ih]
-    let localDecls := (← getLCtx).decls.toArray.filterMap id |>.filter fun decl ↦ !(decl.kind == .implDetail || forbidden.contains decl.userName.getRoot)
+    let forbidden := #[`grasshopper_ih]
+    let localDecls := (← getLCtx).decls.toArray.filterMap id |>.filter fun decl ↦ !(decl.isImplementationDetail || forbidden.contains decl.userName.getRoot)
     let context : Array String ← localDecls.filterMapM fun decl ↦ do
       if ← isProp decl.type then
         return none
