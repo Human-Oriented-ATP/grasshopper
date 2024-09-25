@@ -6,6 +6,7 @@ from smt_lia import LiaChecker
 from logic import *
 import prover
 from prover import FailedProof, simplify_exist_clause
+import export_to_lean
 
 class FailedProofDisjoint(FailedProof):
     def __init__(self, model, seq1, seq2, boom):
@@ -225,7 +226,7 @@ def model_display_mines(mines, model):
     print(dummy.seq_str(mines))
 
 class GrasshopperEnv:
-    def __init__(self, auto_assume = False, record_uflia = False, show_record_step = False):
+    def __init__(self, auto_assume = False, record_uflia = False, record_lean = False, show_record_step = False):
         self.size = TermInt.fixed_var('size')
         self.jumps = JumpSet.fixed_var('jumps')
         self.mines = MineField.fixed_var('mines')
@@ -242,8 +243,11 @@ class GrasshopperEnv:
         )
         self.ctx_stack = []
         self.proven = False
+        if record_lean:
+            export_to_lean.start_export(len(univ_theorems))
         self.prover_kwargs = {
             'record_uflia' : record_uflia,
+            'record_lean' : record_lean,
             'show_step' : show_record_step,
         }
         self.auto_assume = auto_assume
@@ -332,6 +336,8 @@ class GrasshopperEnv:
         else:
             self.ctx = None
             self.proven = True
+            if self.prover_kwargs['record_lean']:
+                export_to_lean.finish_export()
 
     def undeconstruct(self, value):
         return self.ctx.undeconstruct(value)

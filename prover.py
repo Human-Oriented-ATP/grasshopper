@@ -2,6 +2,7 @@ from logic import equals, Substitution, TermBool, TermInt, Jump, Jumps, MineFiel
 from auto_inst import AutoInstance
 from smt_lia import LiaChecker
 from uflia_hammer import record_grasshopper_task
+import export_to_lean
 
 debug = False
 default_solver = ('cvc4', '-m', '--lang', 'smt')
@@ -174,7 +175,7 @@ def constraints_to_lia(constraints, extra_terms = (), substitute = True, max_ins
 
 last_problem_index = -1
 
-def prove_contradiction(constraints, record_uflia = False, show_step = False, solver_cmd = default_solver, **kwargs):
+def prove_contradiction(constraints, record_uflia = False, record_lean = False, show_step = False, solver_cmd = default_solver, **kwargs):
     global last_problem_index
     lia = constraints_to_lia(constraints, **kwargs)
 
@@ -195,6 +196,8 @@ def prove_contradiction(constraints, record_uflia = False, show_step = False, so
     if record_uflia:
         hammer_fname = "hammer_problems/grasshopper"+str(last_problem_index)
         record_grasshopper_task(constraints, hammer_fname)
+    if record_lean:
+        export_to_lean.export_problem(constraints, last_problem_index)
 
 # the list optional_constraints gets reduced to a satisfiable beginning
 def get_model(hard_constraints, optional_constraints, extra_terms = (), solver_cmd = default_solver, **kwargs):

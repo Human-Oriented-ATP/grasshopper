@@ -12,6 +12,7 @@ abbrev JumpSet := Multiset Jump
 abbrev Jumps.length (jumps : Jumps) := List.length jumps
 abbrev MineField.length (mineField : MineField) := List.length mineField
 abbrev Jump.length (j : Jump) : Int := j
+abbrev JumpSet.singleton (j : Jump) : JumpSet := {j}
 
 def List.getIndexD [Inhabited α] (l : List α) (idx : Int) : α :=
   match idx with
@@ -23,6 +24,7 @@ instance [Inhabited α] : GetElem (List α) Int α (fun _ _ => True) where
 
 abbrev JumpSet.sum (jumps : JumpSet) : Int := (jumps.map Jump.length).sum
 abbrev MineField.countMines (mines : MineField) : Nat := mines.count true
+abbrev MineField.emptyCopy (mines : MineField) : MineField := List.replicate (List.length mines) false
 
 abbrev jumpOver (j : Jump) : MineField := List.replicate j.natPred false
 abbrev Jumps.landings (jumps : Jumps) : MineField := jumps.bind (fun j => (jumpOver j).concat true)

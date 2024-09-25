@@ -65,6 +65,6 @@ def solution(env):
     env.solve_with_jumps(J2 + J + jumpso)
 
 if __name__ == "__main__":
-    env = GrasshopperEnv(record_uflia = True, show_record_step = True)
+    env = GrasshopperEnv(record_uflia = False, record_lean = False, show_record_step = True)
     solution(env)    
     env.check_solved()

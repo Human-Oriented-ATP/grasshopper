@@ -31,6 +31,9 @@ class Parser:
         self.name_to_const = {
             'true' : TermBool.true,
             'false' : TermBool.false,
+            'True' : TermBool.true,
+            'False' : TermBool.false,
+            '[]' : MineField(),
         }
         def singleton(x):
             if isinstance(x, Jump): return Jumps(x)
@@ -38,10 +41,17 @@ class Parser:
             else:
                 raise Exception(f"Cannot build singleton out of {x} of type {type(x)}")
         def cons(x,y):
-            if isinstance(x, Jump): return Jumps(x,y)
+            if isinstance(x, Jump):
+                if isinstance(y, MineField) and not y.parts:
+                    return Jumps(x)
+                return Jumps(x,y)
             elif isinstance(x, TermBool): return MineField(x,y)
             else:
                 raise Exception(f"Cannot build cons out of {x} of type {type(x)}")
+        def mul(x,y):
+            if x.is_num_const: return x.value()*y
+            elif x.is_num_const: return y.value()*x
+            else: raise Exception(f"Cannot multiply: {x} * {y}")
         self.name_to_fun = {
             '↑' : (lambda x : x), # ignore coersion
             'Nat.cast': (lambda x : x), # ignore coersion
@@ -51,6 +61,7 @@ class Parser:
             'Multiset.cons' : JumpSet.merge,
             'Membership.mem' : lambda x,s : s.contains(x),
             'JumpSet.sum'     : JumpSet.length.fget,
+            'JumpSet.singleton' : JumpSet.merge,
             'MineField.length'     : MineField.length.fget,
             'MineField.countMines' : MineField.count.fget,
             'List.getIndexD'      : MineField.getitem,
@@ -59,7 +70,8 @@ class Parser:
             'Jumps.sum'      : lambda x: x.length,
             'Jumps.length'   : lambda x: x.number,
             'Jump.length'    : Jump.length.fget,
-            'HAdd.hAdd' : TermInt.sum,
+            'HAdd.hAdd' : lambda x,y: (TermInt.sum if isinstance(x, TermInt) else JumpSet.merge)(x,y),
+            'HMul.hMul' : mul,
             'HSub.hSub' : lambda a,b: a-b,
             'singleton' : singleton,
             'List.cons' : cons,
@@ -71,7 +83,7 @@ class Parser:
             'NOT' : TermBool.invert,
             'IMPLIES'  : lambda a,b: ~a | b,
             'or'  : disjunction,
-            'and' : conjunction,            
+            'and' : conjunction,
         }
 
     def parse_tokens(self, tokens, i):
@@ -94,7 +106,7 @@ class Parser:
             return res, i+1
         else:
             # constant
-            if tokens[i].isnumeric():
+            if tokens[i].isnumeric() or tokens[i][0] == '-' and tokens[i][1:].isnumeric():
                 res = TermInt(int(tokens[i]))
             else:
                 res = self.name_to_const[tokens[i]]
@@ -193,7 +205,10 @@ if __name__ == "__main__":
         if fname.endswith('.txt')
     ]
     fnames.sort()
-    # fnames = ['auto-at-line-248-character-10.txt']
+    fnames = ['auto-at-line-248-character-10.txt']
+
+    dirname = ""
+    fnames = ["test_problem"]
     debug = (len(fnames) == 1)
     num_proven = 0
     num_total = 0

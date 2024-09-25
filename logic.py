@@ -850,7 +850,7 @@ class JumpSet(Term):
     @staticmethod
     @term_fun
     def merge(*args):
-        assert all(isinstance(arg, (Jump, JumpSet)) for arg in args)
+        assert all(isinstance(arg, (Jump, JumpSet)) for arg in args), args
         if any(arg.f == JumpSet.merge for arg in args):
             simp_args = []
             for arg in args:
