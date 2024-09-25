@@ -1,16 +1,14 @@
 import sys
 from logic import *
 
-header = """
-import Grasshopper.ProcessingAndAutomation
+header = """import Grasshopper.ProcessingAndAutomation
 
 set_option grasshopper.add_theorems true
 """
 
 solution_skeleton = """:= by
   intros
-  auto
-"""
+  auto"""
 
 type_to_lean = {
     TermBool: "Prop",
@@ -148,8 +146,7 @@ def export_problem(constraints, problem_num):
         raise Exception(f"Duplicite name among {fixed_vars}")
     thm_name = f"hammer_problem_{problem_num}"
     print(file = export_stream)
-    #print(f"theorem {thm_name}", file = export_stream)
-    print(f"example -- {problem_num}", file = export_stream)
+    print(f"theorem {thm_name}", file = export_stream)
     for v in fixed_vars:
         print(f"  ({v.var_name} : {type_to_lean[type(v)]})", file = export_stream)
     prefix = ': '

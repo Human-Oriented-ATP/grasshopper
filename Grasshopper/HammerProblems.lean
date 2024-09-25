@@ -1,9 +1,8 @@
-
 import Grasshopper.ProcessingAndAutomation
 
 set_option grasshopper.add_theorems true
 
-example -- 0
+theorem hammer_problem_0
   (jumps : JumpSet)
   (mines : MineField)
   (size : Int)
@@ -17,8 +16,7 @@ example -- 0
   intros
   auto
 
-
-example -- 1
+theorem hammer_problem_1
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -37,8 +35,7 @@ example -- 1
   intros
   auto
 
-
-example -- 2
+theorem hammer_problem_2
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -57,8 +54,7 @@ example -- 2
   intros
   auto
 
-
-example -- 3
+theorem hammer_problem_3
   (boom : Int)
   (jumps : JumpSet)
   (jumps_max : Jump)
@@ -79,8 +75,7 @@ example -- 3
   intros
   auto
 
-
-example -- 4
+theorem hammer_problem_4
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -99,8 +94,7 @@ example -- 4
   intros
   auto
 
-
-example -- 5
+theorem hammer_problem_5
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -123,8 +117,7 @@ example -- 5
   intros
   auto
 
-
-example -- 6
+theorem hammer_problem_6
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -153,8 +146,7 @@ example -- 6
   intros
   auto
 
-
-example -- 7
+theorem hammer_problem_7
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -186,8 +178,7 @@ example -- 7
   intros
   auto
 
-
-example -- 8
+theorem hammer_problem_8
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -219,8 +210,7 @@ example -- 8
   intros
   auto
 
-
-example -- 9
+theorem hammer_problem_9
   (boom : Int)
   (jumps : JumpSet)
   (jumps_ih : Jumps)
@@ -254,8 +244,7 @@ example -- 9
   intros
   auto
 
-
-example -- 10
+theorem hammer_problem_10
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -284,8 +273,7 @@ example -- 10
   intros
   auto
 
-
-example -- 11
+theorem hammer_problem_11
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -318,8 +306,7 @@ example -- 11
   intros
   auto
 
-
-example -- 12
+theorem hammer_problem_12
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -356,8 +343,7 @@ example -- 12
   intros
   auto
 
-
-example -- 13
+theorem hammer_problem_13
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -394,8 +380,7 @@ example -- 13
   intros
   auto
 
-
-example -- 14
+theorem hammer_problem_14
   (boom : Int)
   (jumps : JumpSet)
   (jumps_ih : Jumps)
@@ -434,8 +419,7 @@ example -- 14
   intros
   auto
 
-
-example -- 15
+theorem hammer_problem_15
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -472,8 +456,7 @@ example -- 15
   intros
   auto
 
-
-example -- 16
+theorem hammer_problem_16
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jumps)
@@ -516,8 +499,7 @@ example -- 16
   intros
   auto
 
-
-example -- 17
+theorem hammer_problem_17
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jumps)
@@ -560,8 +542,7 @@ example -- 17
   intros
   auto
 
-
-example -- 18
+theorem hammer_problem_18
   (boom : Int)
   (jumps : JumpSet)
   (jumps_ih : Jumps)
@@ -606,8 +587,7 @@ example -- 18
   intros
   auto
 
-
-example -- 19
+theorem hammer_problem_19
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -636,8 +616,7 @@ example -- 19
   intros
   auto
 
-
-example -- 20
+theorem hammer_problem_20
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -678,8 +657,7 @@ example -- 20
   intros
   auto
 
-
-example -- 21
+theorem hammer_problem_21
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -723,8 +701,7 @@ example -- 21
   intros
   auto
 
-
-example -- 22
+theorem hammer_problem_22
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jump)
@@ -771,8 +748,7 @@ example -- 22
   intros
   auto
 
-
-example -- 23
+theorem hammer_problem_23
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jump)
@@ -819,8 +795,7 @@ example -- 23
   intros
   auto
 
-
-example -- 24
+theorem hammer_problem_24
   (boom : Int)
   (jumps : JumpSet)
   (jumps_ih : Jumps)
@@ -869,8 +844,7 @@ example -- 24
   intros
   auto
 
-
-example -- 25
+theorem hammer_problem_25
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -899,8 +873,7 @@ example -- 25
   intros
   auto
 
-
-example -- 26
+theorem hammer_problem_26
   (jumps : JumpSet)
   (jumps_max : Jump)
   (jumpsr : JumpSet)
@@ -941,8 +914,7 @@ example -- 26
   intros
   auto
 
-
-example -- 27
+theorem hammer_problem_27
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_max : Jump)
@@ -986,8 +958,7 @@ example -- 27
   intros
   auto
 
-
-example -- 28
+theorem hammer_problem_28
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jump)
@@ -1034,8 +1005,7 @@ example -- 28
   intros
   auto
 
-
-example -- 29
+theorem hammer_problem_29
   (jumps : JumpSet)
   (jumps_ih : Jumps)
   (jumps_ih0 : Jump)
@@ -1082,8 +1052,7 @@ example -- 29
   intros
   auto
 
-
-example -- 30
+theorem hammer_problem_30
   (boom : Int)
   (jumps : JumpSet)
   (jumps_ih : Jumps)
@@ -1131,4 +1100,3 @@ example -- 30
 := by
   intros
   auto
-
